@@ -21,8 +21,8 @@
         hours (int (/ seconds-num 3600))
         minutes (int (/ seconds-num 60))
         seconds (int (mod seconds-num 60))]
-    (->> [hours minutes seconds]
-         (filter pos?)
+    (->> [(when (pos? hours) hours) minutes seconds]
+         (filter identity)
          (map (partial format "%02d"))
          (string/join ":"))))
 
@@ -62,3 +62,22 @@
                                (reduce (speaker-splitter speaker-at)
                                        [[] {:words []}]))]
     (conj parts (finalise-part last-part))))
+
+(def formatters
+  {:plaintext #(->> %
+                    (map (fn [{:keys [start-time speaker words]}]
+                           (str start-time "\n\n" speaker ": " words)))
+                    (string/join "\n\n"))
+   :otr #(->> %
+              identity)})
+
+(defn format-data [formatter data]
+  (let [format-fn (formatters formatter)]
+    (when-not format-fn
+      (throw (ex-info "Invalid formatter" {:transcribble/formatter formatter})))
+    (->> data
+         (drop-while #(nil? (:speaker %)))
+         format-fn)))
+
+(defn write-transcript [filename formatter data]
+  (spit filename (format-data formatter data)))
