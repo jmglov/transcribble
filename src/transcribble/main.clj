@@ -1,7 +1,8 @@
 (ns transcribble.main
   (:require [clojure.java.io :as io]
             [clojure.string :as string]
-            [cheshire.core :as json]))
+            [cheshire.core :as json]
+            [hiccup.core :as hiccup]))
 
 (defn load-json-file [filename]
   (with-open [f (io/reader filename)]
@@ -35,7 +36,7 @@
           speaker (speaker-at start_time)
           current-part (if (or (:start-time current-part) (nil? start_time))
                          current-part
-                         (assoc current-part :start-time (->timestamp start_time)))]
+                         (assoc current-part :start-time start_time))]
       (cond
         (= "punctuation" type)
         [parts (update current-part :words append-punctuation word)]
@@ -63,21 +64,40 @@
                                        [[] {:words []}]))]
     (conj parts (finalise-part last-part))))
 
-(def formatters
-  {:plaintext #(->> %
-                    (map (fn [{:keys [start-time speaker words]}]
-                           (str start-time "\n\n" speaker ": " words)))
-                    (string/join "\n\n"))
-   :otr #(->> %
-              identity)})
+(defn otr-reducer [acc {:keys [start-time speaker words]}]
+  (-> acc
+      (conj [:p
+             [:span {:class "timestamp" :data-timestamp start-time}
+              (->timestamp start-time)]
+             [:br]])
+      (conj [:p (str speaker ": " words)])))
 
-(defn format-data [formatter data]
+(def formatters
+  {:plaintext
+   (fn [_ data]
+                (->> data
+                     (map (fn [{:keys [start-time speaker words]}]
+                            (str (->timestamp start-time) "\n\n" speaker ": " words)))
+                     (string/join "\n\n")))
+
+   :otr
+   (fn [media-file data]
+          (let [text (->> data
+                          (reduce otr-reducer [])
+                          (map (fn [el] (hiccup/html el)))
+                          (string/join "\n"))]
+            (-> {:text text
+                 :media media-file
+                 :media-time 0.0}
+                (json/generate-string {:pretty true}))))})
+
+(defn format-data [media-file formatter data]
   (let [format-fn (formatters formatter)]
     (when-not format-fn
       (throw (ex-info "Invalid formatter" {:transcribble/formatter formatter})))
     (->> data
          (drop-while #(nil? (:speaker %)))
-         format-fn)))
+         (format-fn media-file))))
 
 (defn write-transcript [filename formatter data]
   (spit filename (format-data formatter data)))
