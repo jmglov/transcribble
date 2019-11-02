@@ -15,7 +15,12 @@ The config file is a JSON file containing the following options:
 ```json
 {
   "formatter": FORMATTER,
-  "abbreviate-after": INT
+  "abbreviate-after": INT,
+  "remove-fillers": [
+    FILLER_WORD1,
+    FILLER_WORD2,
+    ...
+  ]
 }
 ```
 
@@ -31,5 +36,9 @@ abbreviated "KG", which is not helpful); otherwise the first part of their name,
 unless that too is ambiguous (e.g. "Cher Binnington" and "Cher Tjeba");
 otherwise their full name.
 
+If `remove-fillers` is specified, the value is a list of filler words which will
+be removed from the transcript. Some common filler words in English are "um" and
+"uh".
+
 Neither option need be specified, in which case the formatter will default to
-OTR and no abbreviation will be done.
+OTR, no abbreviation will be done, and no filler word removal will be done.
