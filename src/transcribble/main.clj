@@ -9,8 +9,9 @@
     (json/parse-stream f true)))
 
 (defn load-config [config-filename]
-  (merge {:formatter :otr}
-         (when config-filename (load-json-file config-filename))))
+  (let [config (merge {:formatter :otr}
+                      (when config-filename (load-json-file config-filename)))]
+    (update config :formatter keyword)))
 
 (defn make-speakers-map [speakers]
   (when speakers
@@ -58,13 +59,13 @@
         [(conj parts (finalise-part current-part))
          {:speaker speaker, :words [word]}]))))
 
-(defn load-transcribe-json [config filename speakers]
+(defn load-transcribe-json [config filename]
   (let [{:keys [results]} (load-json-file filename)
         speaker-at (->> (get-in results [:speaker_labels :segments])
                         (reduce (fn [acc {:keys [items]}]
                                   (->> items
                                        (map (fn [{:keys [start_time speaker_label]}]
-                                              [start_time (get speakers speaker_label speaker_label)]))
+                                              [start_time speaker_label]))
                                        (into {})
                                        (merge acc)))
                                 {}))
@@ -101,20 +102,54 @@
                  :media-time 0.0}
                 (json/generate-string {:pretty true}))))})
 
-(defn format-data [media-filename formatter data]
-  (let [format-fn (formatters formatter)]
+(defn ->initials [speaker]
+  (let [names (string/split speaker #"\s")]
+    (if (> (count names) 1)
+      (->> names (map first) string/join)
+      speaker)))
+
+(defn abbreviate [speakers]
+  (let [initials (->> speakers
+                      (map (fn [[label speaker]] [label (->initials speaker)]))
+                      (into {}))
+        unique-initials (set (vals initials))
+        first-names (->> speakers
+                         (map (fn [[label speaker]] [label (first (string/split speaker #"\s"))]))
+                         (into {}))
+        unique-first-names (set (vals first-names))]
+    (cond
+      (> (count unique-initials) 1) initials
+      (> (count unique-first-names) 1) first-names
+      :else speakers)))
+
+(defn label-speaker [speaker speakers]
+  (get speakers speaker speaker))
+
+(defn format-data [{:keys [abbreviate-after formatter] :as config}
+                   media-filename speakers data]
+  (let [num-speakers (->> data
+                          (group-by :speaker)
+                          (filter (fn [[speaker _]] speaker))
+                          count)
+        abbreviated-speakers (abbreviate speakers)
+        label-speakers (fn [acc part]
+                         (let [abbreviate? (and abbreviate-after
+                                                (>= (count acc) (* abbreviate-after num-speakers)))]
+                           (conj acc
+                                 (update part :speaker
+                                         #(label-speaker % (if abbreviate? abbreviated-speakers speakers))))))
+        format-fn (formatters formatter)]
     (when-not format-fn
       (throw (ex-info "Invalid formatter" {:transcribble/formatter formatter})))
     (->> data
          (drop-while #(nil? (:speaker %)))
+         (reduce label-speakers [])
          (format-fn media-filename))))
-
-(defn write-transcript [output-filename media-filename formatter data]
-  (spit output-filename (format-data media-filename formatter data)))
 
 (defn -main [transcribe-filename output-filename media-filename speaker-names
              & [config-filename]]
   (let [config (load-config config-filename)
         speakers (make-speakers-map speaker-names)
-        data (load-transcribe-json config transcribe-filename speakers)]
-    (write-transcript output-filename media-filename (keyword (:formatter config)) data)))
+        data (load-transcribe-json config transcribe-filename)
+        formatted-data (format-data config media-filename speakers data)]
+    (spit output-filename formatted-data)))
