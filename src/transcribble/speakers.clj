@@ -23,8 +23,8 @@
                          (into {}))
         unique-first-names (set (vals first-names))]
     (cond
-      (> (count unique-initials) 1) initials
-      (> (count unique-first-names) 1) first-names
+      (= (count unique-initials) (count speakers)) initials
+      (= (count unique-first-names) (count speakers)) first-names
       :else speakers)))
 
 (defn label-speaker [speaker speakers]
