@@ -8,6 +8,16 @@
   (with-open [f (io/reader filename)]
     (json/parse-stream f true)))
 
+(defn load-config [config-filename]
+  (merge {:formatter :otr}
+         (when config-filename (load-json-file config-filename))))
+
+(defn make-speakers-map [speakers]
+  (when speakers
+    (->> (string/split speakers #",")
+         (map-indexed (fn [i speaker-name] [(str "spk_" i) speaker-name]))
+         (into {}))))
+
 (defn append-punctuation [words punctuation]
   (if (empty? words)
     (conj words punctuation)
@@ -48,7 +58,7 @@
         [(conj parts (finalise-part current-part))
          {:speaker speaker, :words [word]}]))))
 
-(defn load-transcribe-json [filename speakers]
+(defn load-transcribe-json [config filename speakers]
   (let [{:keys [results]} (load-json-file filename)
         speaker-at (->> (get-in results [:speaker_labels :segments])
                         (reduce (fn [acc {:keys [items]}]
@@ -91,13 +101,20 @@
                  :media-time 0.0}
                 (json/generate-string {:pretty true}))))})
 
-(defn format-data [media-file formatter data]
+(defn format-data [media-filename formatter data]
   (let [format-fn (formatters formatter)]
     (when-not format-fn
       (throw (ex-info "Invalid formatter" {:transcribble/formatter formatter})))
     (->> data
          (drop-while #(nil? (:speaker %)))
-         (format-fn media-file))))
+         (format-fn media-filename))))
 
-(defn write-transcript [filename formatter data]
-  (spit filename (format-data formatter data)))
+(defn write-transcript [output-filename media-filename formatter data]
+  (spit output-filename (format-data media-filename formatter data)))
+
+(defn -main [transcribe-filename output-filename media-filename speaker-names
+             & [config-filename]]
+  (let [config (load-config config-filename)
+        speakers (make-speakers-map speaker-names)
+        data (load-transcribe-json config transcribe-filename speakers)]
+    (write-transcript output-filename media-filename (keyword (:formatter config)) data)))
