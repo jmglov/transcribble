@@ -41,6 +41,17 @@
                  :media-time 0.0}
                 (json/generate-string {:pretty true}))))})
 
+(defn remove-fillers [filler-words part]
+  (let [fillers (str "(?:" (string/join "|" filler-words) ")")
+        starting-pattern (re-pattern (str "(?i)(^|[.]\\s+)" fillers ", (.)"))
+        comma-pattern (re-pattern (str "(?i),?\\s+" fillers ",?"))]
+    (update part :words
+            (fn [words]
+              (-> words
+                  (string/replace starting-pattern (fn [[_ punc first-letter]]
+                                                     (str punc (string/upper-case first-letter))))
+                  (string/replace comma-pattern ""))))))
+
 (defn format-data [{:keys [abbreviate-after formatter] :as config}
                    media-filename speakers data]
   (let [num-speakers (->> data
@@ -60,4 +71,5 @@
     (->> data
          (drop-while #(nil? (:speaker %)))
          (reduce label-speakers [])
+         (map (partial remove-fillers (:remove-fillers config)))
          (format-fn media-filename))))

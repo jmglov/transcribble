@@ -9,9 +9,12 @@
     (json/parse-stream f true)))
 
 (defn load-config [config-filename]
-  (let [config (merge {:formatter :otr}
+  (let [config (merge {:formatter :otr
+                       :remove-fillers #{}}
                       (when config-filename (load-json-file config-filename)))]
-    (update config :formatter keyword)))
+    (-> config
+        (update :formatter keyword)
+        (update :remove-fillers set))))
 
 (defn append-punctuation [words punctuation]
   (if (empty? words)
