@@ -79,8 +79,8 @@
       (conj [:p
              [:span {:class "timestamp" :data-timestamp start-time}
               (->timestamp start-time)]
-             [:br]])
-      (conj [:p (str speaker ": " words)])))
+             (str speaker ": " words)])
+      (conj [:br])))
 
 (def formatters
   {:plaintext
