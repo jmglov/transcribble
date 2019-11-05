@@ -52,8 +52,8 @@
                                                      (str punc (string/upper-case first-letter))))
                   (string/replace comma-pattern ""))))))
 
-(defn format-data [{:keys [abbreviate-after formatter] :as config}
-                   media-filename speakers data]
+(defn format-data [{:keys [abbreviate-after formatter speakers] :as config}
+                   media-filename data]
   (let [num-speakers (->> data
                           (group-by :speaker)
                           (filter (fn [[speaker _]] speaker))
@@ -69,7 +69,7 @@
     (when-not format-fn
       (throw (ex-info "Invalid formatter" {:transcribble/formatter formatter})))
     (->> data
-         (drop-while #(nil? (:speaker %)))
+         (drop-while #(and (> (count speakers) 1) (nil? (:speaker %))))
          (reduce label-speakers [])
          (map (partial remove-fillers (:remove-fillers config)))
          (format-fn media-filename))))

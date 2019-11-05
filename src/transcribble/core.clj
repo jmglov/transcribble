@@ -2,7 +2,8 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as string]
             [cheshire.core :as json]
-            [transcribble.format :as format]))
+            [transcribble.format :as format]
+            [transcribble.speakers :as speakers]))
 
 (defn load-json-file [filename]
   (with-open [f (io/reader filename)]
@@ -48,16 +49,12 @@
 
 (defn load-transcribe-json [config filename]
   (let [{:keys [results]} (load-json-file filename)
-        speaker-at (->> (get-in results [:speaker_labels :segments])
-                        (reduce (fn [acc {:keys [items]}]
-                                  (->> items
-                                       (map (fn [{:keys [start_time speaker_label]}]
-                                              [start_time speaker_label]))
-                                       (into {})
-                                       (merge acc)))
-                                {}))
+        speaker-at (speakers/build-speaker-at config results)
         pronunciations (:items results)
         [parts last-part] (->> pronunciations
                                (reduce (speaker-splitter speaker-at)
-                                       [[] {:words []}]))]
-    (conj parts (finalise-part last-part))))
+                                       [[] {:words []}]))
+        all-parts (conj parts (finalise-part last-part))]
+    (if (= 1 (count all-parts))
+      [(assoc (first all-parts) :speaker (speakers/->speaker-label 0))]
+      all-parts)))
