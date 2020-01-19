@@ -42,3 +42,27 @@ be removed from the transcript. Some common filler words in English are "um" and
 
 Neither option need be specified, in which case the formatter will default to
 OTR, no abbreviation will be done, and no filler word removal will be done.
+
+## AWS Transcribe document format
+
+```clj
+{:jobName "some-job"
+ :accountId "123456789"
+ :status "COMPLETED"
+ :results
+ {:transcripts ["This is what they say in the podcast..."]
+  :speaker_labels
+  {:speakers 2  ; number of speakers
+   :segments
+   [{:start_time "11.91"
+     :end_time "13.39"
+     :speaker_label "spk_1"
+     :items
+     [{:start_time "11.91", :end_time "12.4", :speaker_label "spk_1"}
+      {:start_time "12.41", :end_time "13.39", :speaker_label "spk_1"}]}]}
+ :items
+ [{:start_time "11.91",
+   :end_time "12.4",
+   :alternatives [{:confidence "1.0", :content "never"}],
+   :type "pronunciation"}]}}
+```
