@@ -42,15 +42,17 @@
                 (json/generate-string {:pretty true}))))})
 
 (defn remove-fillers [filler-words part]
-  (let [fillers (str "(?:" (string/join "|" filler-words) ")")
-        starting-pattern (re-pattern (str "(?i)(^|[.]\\s+)" fillers ", (.)"))
-        comma-pattern (re-pattern (str "(?i),?\\s+" fillers ",?"))]
-    (update part :words
-            (fn [words]
-              (-> words
-                  (string/replace starting-pattern (fn [[_ punc first-letter]]
-                                                     (str punc (string/upper-case first-letter))))
-                  (string/replace comma-pattern ""))))))
+  (if (empty? filler-words)
+    part
+    (let [fillers (str "(?:" (string/join "|" filler-words) ")")
+          starting-pattern (re-pattern (str "(?i)(^|[.]\\s+)" fillers ", (.)"))
+          comma-pattern (re-pattern (str "(?i),?\\s+" fillers ",?"))]
+      (update part :words
+              (fn [words]
+                (-> words
+                    (string/replace starting-pattern (fn [[_ punc first-letter]]
+                                                       (str punc (string/upper-case first-letter))))
+                    (string/replace comma-pattern "")))))))
 
 (defn format-data [{:keys [abbreviate-after formatter speakers] :as config}
                    media-filename data]
