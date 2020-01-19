@@ -19,7 +19,9 @@
       (conj [:p
              [:span {:class "timestamp" :data-timestamp start-time}
               (->timestamp start-time)]
-             (str speaker ": " words)])
+             (if speaker
+               (format "<b>%s</b>: %s" speaker words)
+               words)])
       (conj [:br])))
 
 (def formatters
@@ -41,37 +43,29 @@
                  :media-time 0.0}
                 (json/generate-string {:pretty true}))))})
 
-(defn remove-fillers [filler-words part]
-  (if (empty? filler-words)
-    part
-    (let [fillers (str "(?:" (string/join "|" filler-words) ")")
-          starting-pattern (re-pattern (str "(?i)(^|[.]\\s+)" fillers ", (.)"))
-          comma-pattern (re-pattern (str "(?i),?\\s+" fillers ",?"))]
-      (update part :words
-              (fn [words]
-                (-> words
-                    (string/replace starting-pattern (fn [[_ punc first-letter]]
-                                                       (str punc (string/upper-case first-letter))))
-                    (string/replace comma-pattern "")))))))
-
-(defn format-data [{:keys [abbreviate-after formatter speakers] :as config}
-                   media-filename data]
-  (let [num-speakers (->> data
+(defn format-parts [{:keys [abbreviate-after formatter speakers] :as config}
+                    media-filename parts]
+  (let [num-speakers (->> parts
                           (group-by :speaker)
                           (filter (fn [[speaker _]] speaker))
                           count)
+        format-fn (formatters formatter)
         abbreviated-speakers (speakers/abbreviate speakers)
-        label-speakers (fn [acc part]
-                         (let [abbreviate? (and abbreviate-after
-                                                (>= (count acc) (* abbreviate-after num-speakers)))]
-                           (conj acc
-                                 (update part :speaker
-                                         #(speakers/label-speaker % (if abbreviate? abbreviated-speakers speakers))))))
-        format-fn (formatters formatter)]
+        label-speakers
+        (fn [part]
+          (if (> (count speakers) 1)
+            (reduce
+             (fn [acc part]
+               (let [abbreviate? (and abbreviate-after
+                                      (>= (count acc) (* abbreviate-after num-speakers)))]
+                 (conj acc
+                       (update part :speaker
+                               #(speakers/label-speaker % (if abbreviate? abbreviated-speakers speakers))))))
+             [])
+            part))]
     (when-not format-fn
       (throw (ex-info "Invalid formatter" {:transcribble/formatter formatter})))
-    (->> data
+    (->> parts
          (drop-while #(and (> (count speakers) 1) (nil? (:speaker %))))
-         (reduce label-speakers [])
-         (map (partial remove-fillers (:remove-fillers config)))
+         label-speakers
          (format-fn media-filename))))
