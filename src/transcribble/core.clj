@@ -17,17 +17,16 @@
         (update :formatter keyword)
         (update :remove-fillers set))))
 
-(defn append-punctuation [words punctuation]
-  (if (empty? words)
-    (conj words punctuation)
-    (let [words-reversed (reverse words)
-          last-word (str (first words-reversed) punctuation)]
-      (-> (cons last-word (drop 1 words-reversed))
-          reverse
-          vec))))
+(defn ->float [time-str]
+  (try (Float. time-str)
+       (catch Exception _ 0.0)))
 
-(defn finalise-part [part]
-  (update part :words #(string/join " " %)))
+(defn first-start-time [pronunciations]
+  (->> pronunciations
+       (drop-while (complement :start_time))
+       first
+       :start_time
+       ->float))
 
 (defn ->word [pronunciation]
   (-> pronunciation :alternatives first :content))
@@ -41,7 +40,42 @@
    :start-time (:start_time (first pronunciations))
    :words (reduce ->sentence nil pronunciations)})
 
+(defn fixup-punctuation-timestamps [{:keys [last-end-time] :as acc}
+                                    {:keys [end_time] :as pronunciation}]
+  (if end_time
+    (-> acc
+        (update :pronunciations conj pronunciation)
+        (assoc :last-end-time end_time))
+    (update acc :pronunciations
+            conj (-> pronunciation
+                     (assoc :start_time (str last-end-time))
+                     (assoc :end_time (str last-end-time))))))
+
+(defn partition-sentences [pronunciations]
+  (->> pronunciations
+       (partition-by #(and (= "punctuation" (:type %))
+                           (= "." (->word %))))
+       (partition-all 2)
+       (map (partial apply concat))))
+
+(defn partition-durations [start-time split-duration-secs pronunciations]
+  (println "Splitting by duration")
+  (let [time-chunk (comp int
+                         #(/ (- % start-time) split-duration-secs)
+                         ->float
+                         :start_time
+                         first)]
+    (->> pronunciations
+         (reduce fixup-punctuation-timestamps
+                 {:pronunciations []
+                  :last-end-time start-time})
+         :pronunciations
+         partition-sentences
+         (partition-by time-chunk)
+         (map (partial apply concat)))))
+
 (defn partition-speakers [speaker-at pronunciations]
+  (println "Splitting by speaker")
   (->> pronunciations
        (reduce (fn [{:keys [current-speaker pronunciations] :as acc} p]
                  (let [speaker (or (speaker-at (:start_time p)) current-speaker)]
@@ -52,70 +86,15 @@
        :pronunciations
        (partition-by :speaker)))
 
-(defn split-parts [{:keys [split-duration-secs speakers] :as config}
-                   speaker-at pronunciations]
-  (println "Number of speakers:" (count speakers))
-  (println "Splitting every" split-duration-secs "seconds")
-  (let [->float
-        #(try (Float. %) (catch Exception _ 0.0))
-
-        within-split-duration?
-        (fn [{:keys [start-time]} pronunciation]
-          (if (:start_time pronunciation)
-            (< (- (->float (:start_time pronunciation)) start-time)
-               split-duration-secs)
-            true))
-
-        splitter
-        (fn [[parts current-part following-punctuation?]
-             {:keys [type alternatives start_time] :as pronunciation}]
-          (let [word (-> alternatives first :content)
-                current-part (if (or (:start-time current-part) (nil? start_time))
-                               current-part
-                               (do
-                                 (println "Setting start time to" start_time)
-                                 (assoc current-part :start-time (->float start_time))))]
-            (cond
-              (= "punctuation" type)
-              [parts (update current-part :words append-punctuation word) true]
-
-              (empty? (:words current-part))
-              [parts (update current-part :words conj word) false]
-
-              (and (= (count speakers) 1)
-                   (not following-punctuation?))
-              [parts (update current-part :words conj word) false]
-
-              (and (= (count speakers) 1)
-                   (within-split-duration? current-part pronunciation))
-              [parts (update current-part :words conj word) false]
-
-              (and (> (count speakers) 1)
-                   (= (:speaker current-part) (speaker-at (:start_time pronunciation))))
-              [parts (update current-part :words conj word) false]
-
-              :else
-              [(conj parts (finalise-part current-part))
-               {:speaker (speaker-at start_time)
-                :start-time (->float start_time)
-                :words [word]}
-               false])))]
-    (reduce splitter
-            [[] {:words []} false]
-            pronunciations)))
-
 (defn load-transcribe-json [config filename]
   (let [{:keys [results]} (load-json-file filename)
         speaker-at (speakers/build-speaker-at config results)
-        pronunciations (:items results)]
-    (if (> (count (:speakers config)) 1)
-      (do
-        (println "Multiple speakers; using speaker recognition for splitting")
-        (->> pronunciations
-             (partition-speakers speaker-at)
-             (map ->part)))
-      (let [[parts last-part] (split-parts config speaker-at pronunciations)
-            all-parts (conj parts (finalise-part last-part))]
-        (if (= 1 (count all-parts))
-          [(assoc (first all-parts) :speaker (speakers/->speaker-label 0))]
-          all-parts)))))
+        pronunciations (:items results)
+        split (if (> (count (:speakers config)) 1)
+                (partial partition-speakers speaker-at)
+                (partial partition-durations
+                         (first-start-time pronunciations)
+                         (:split-duration-secs config)))]
+    (->> pronunciations
+         split
+         (map ->part))))
