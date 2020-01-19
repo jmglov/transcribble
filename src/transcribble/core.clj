@@ -29,6 +29,29 @@
 (defn finalise-part [part]
   (update part :words #(string/join " " %)))
 
+(defn ->word [pronunciation]
+  (-> pronunciation :alternatives first :content))
+
+(defn ->sentence [acc pronunciation]
+  (let [delimiter (if (or (nil? acc) (= "punctuation" (:type pronunciation))) "" " ")]
+    (str acc delimiter (->word pronunciation))))
+
+(defn ->part [pronunciations]
+  {:speaker (:speaker (first pronunciations))
+   :start-time (:start_time (first pronunciations))
+   :words (reduce ->sentence nil pronunciations)})
+
+(defn partition-speakers [speaker-at pronunciations]
+  (->> pronunciations
+       (reduce (fn [{:keys [current-speaker pronunciations] :as acc} p]
+                 (let [speaker (or (speaker-at (:start_time p)) current-speaker)]
+                   {:current-speaker speaker
+                    :pronunciations (conj pronunciations (assoc p :speaker speaker))}))
+               {:current-speaker nil
+                :pronunciations []})
+       :pronunciations
+       (partition-by :speaker)))
+
 (defn split-parts [{:keys [split-duration-secs speakers] :as config}
                    speaker-at pronunciations]
   (println "Number of speakers:" (count speakers))
@@ -84,9 +107,15 @@
 (defn load-transcribe-json [config filename]
   (let [{:keys [results]} (load-json-file filename)
         speaker-at (speakers/build-speaker-at config results)
-        pronunciations (:items results)
-        [parts last-part] (split-parts config speaker-at pronunciations)
-        all-parts (conj parts (finalise-part last-part))]
-    (if (= 1 (count all-parts))
-      [(assoc (first all-parts) :speaker (speakers/->speaker-label 0))]
-      all-parts)))
+        pronunciations (:items results)]
+    (if (> (count (:speakers config)) 1)
+      (do
+        (println "Multiple speakers; using speaker recognition for splitting")
+        (->> pronunciations
+             (partition-speakers speaker-at)
+             (map ->part)))
+      (let [[parts last-part] (split-parts config speaker-at pronunciations)
+            all-parts (conj parts (finalise-part last-part))]
+        (if (= 1 (count all-parts))
+          [(assoc (first all-parts) :speaker (speakers/->speaker-label 0))]
+          all-parts)))))
