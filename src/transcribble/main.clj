@@ -1,7 +1,8 @@
 (ns transcribble.main
   (:require [transcribble.core :as core]
             [transcribble.format :as format]
-            [transcribble.speakers :as speakers]))
+            [transcribble.speakers :as speakers])
+  (:gen-class))
 
 (defn -main [transcribe-filename output-filename media-filename speaker-names
              & [config-filename]]
