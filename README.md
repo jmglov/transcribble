@@ -66,3 +66,9 @@ OTR, no abbreviation will be done, and no filler word removal will be done.
    :alternatives [{:confidence "1.0", :content "never"}],
    :type "pronunciation"}]}}
 ```
+
+## Building
+
+```bash
+./bin/build
+```
