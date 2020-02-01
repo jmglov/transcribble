@@ -52,7 +52,7 @@
         format-fn (formatters formatter)
         abbreviated-speakers (speakers/abbreviate speakers)
         label-speakers
-        (fn [part]
+        (fn [parts]
           (if (> (count speakers) 1)
             (reduce
              (fn [acc part]
@@ -61,8 +61,8 @@
                  (conj acc
                        (update part :speaker
                                #(speakers/label-speaker % (if abbreviate? abbreviated-speakers speakers))))))
-             [])
-            part))]
+             [] parts)
+            parts))]
     (when-not format-fn
       (throw (ex-info "Invalid formatter" {:transcribble/formatter formatter})))
     (->> parts
