@@ -7,7 +7,7 @@
 (defn ->timestamp [seconds-str]
   (let [seconds-num (Float. seconds-str)
         hours (int (/ seconds-num 3600))
-        minutes (int (/ seconds-num 60))
+        minutes (int (mod (/ seconds-num 60) 60))
         seconds (int (mod seconds-num 60))]
     (->> [(when (pos? hours) hours) minutes seconds]
          (filter identity)
