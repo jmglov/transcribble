@@ -2,7 +2,8 @@
   (:require [clojure.string :as string]
             [cheshire.core :as json]
             [hiccup.core :as hiccup]
-            [transcribble.speakers :as speakers]))
+            [transcribble.speakers :as speakers]
+            [transcribble.util :refer [load-json-file]]))
 
 (defn ->timestamp [seconds-str]
   (let [seconds-num (Float. seconds-str)
@@ -69,3 +70,10 @@
          (drop-while #(and (> (count speakers) 1) (nil? (:speaker %))))
          label-speakers
          (format-fn media-filename))))
+
+(defn fixup-otr [otr-file]
+  (spit otr-file
+        (-> (load-json-file otr-file)
+            (update :text string/replace #"<br />" "")
+            (update :text string/replace #"<p>\s*(<b>\s*</b>|\n)?\s*</p>" "")
+            json/generate-string)))

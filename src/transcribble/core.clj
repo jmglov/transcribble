@@ -1,13 +1,8 @@
 (ns transcribble.core
-  (:require [clojure.java.io :as io]
-            [clojure.string :as string]
-            [cheshire.core :as json]
+  (:require [clojure.string :as string]
             [transcribble.format :as format]
-            [transcribble.speakers :as speakers]))
-
-(defn load-json-file [filename]
-  (with-open [f (io/reader filename)]
-    (json/parse-stream f true)))
+            [transcribble.speakers :as speakers]
+            [transcribble.util :refer [load-json-file]]))
 
 (defn load-config [config-filename]
   (let [config (merge {:formatter :otr
