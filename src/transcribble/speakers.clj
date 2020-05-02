@@ -1,6 +1,22 @@
 (ns transcribble.speakers
   (:require [clojure.string :as string]))
 
+(def abbreviators
+  {:initials
+   (fn [speaker]
+     (let [names (string/split speaker #"\s")]
+       (if (> (count names) 1)
+         (->> names (map first) string/join)
+         speaker)))
+
+   :first-name-or-title
+   (fn [speaker]
+     (let [names (string/split speaker #"\s")]
+       (cond
+         (= (count names) 1) speaker
+         (= "Dr." (first names)) (string/join " " [(first names) (last names)])
+         :else (first names))))})
+
 (defn ->speaker-label [speaker-num]
   (str "spk_" speaker-num))
 
@@ -10,25 +26,15 @@
          (map-indexed (fn [i speaker-name] [(->speaker-label i) speaker-name]))
          (into {}))))
 
-(defn ->initials [speaker]
-  (let [names (string/split speaker #"\s")]
-    (if (> (count names) 1)
-      (->> names (map first) string/join)
-      speaker)))
-
-(defn abbreviate [speakers]
-  (let [initials (->> speakers
-                      (map (fn [[label speaker]] [label (->initials speaker)]))
-                      (into {}))
-        unique-initials (set (vals initials))
-        first-names (->> speakers
-                         (map (fn [[label speaker]] [label (first (string/split speaker #"\s"))]))
-                         (into {}))
-        unique-first-names (set (vals first-names))]
-    (cond
-      (= (count unique-initials) (count speakers)) initials
-      (= (count unique-first-names) (count speakers)) first-names
-      :else speakers)))
+(defn abbreviate [abbreviator speakers]
+  (let [abbreviator-fn (-> abbreviator (or :first-name-or-title) keyword abbreviators)
+        abbreviations (->> speakers
+                           (map (fn [[label speaker]] [label (abbreviator-fn speaker)]))
+                           (into {}))
+        unique-abbreviations (set (vals abbreviations))]
+    (if (= (count unique-abbreviations) (count speakers))
+      abbreviations
+      speakers)))
 
 (defn label-speaker [speaker speakers]
   (get speakers speaker speaker))

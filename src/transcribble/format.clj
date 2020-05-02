@@ -44,14 +44,14 @@
                  :media-time 0.0}
                 (json/generate-string {:pretty true}))))})
 
-(defn format-parts [{:keys [abbreviate-after formatter speakers] :as config}
+(defn format-parts [{:keys [abbreviate-after abbreviator formatter speakers] :as config}
                     media-filename parts]
   (let [num-speakers (->> parts
                           (group-by :speaker)
                           (filter (fn [[speaker _]] speaker))
                           count)
         format-fn (formatters formatter)
-        abbreviated-speakers (speakers/abbreviate speakers)
+        abbreviated-speakers (speakers/abbreviate abbreviator speakers)
         label-speakers
         (fn [parts]
           (if (> (count speakers) 1)
