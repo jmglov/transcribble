@@ -62,39 +62,46 @@
                 :prev nil})
        :pronunciations))
 
-(defn capitalise-reducer [config]
+(defn apply-replacements [config word]
+  (let [replacements (map (fn [[match replacement]] [(re-pattern (name match)) replacement])
+                          (:replace config))]
+    (reduce (fn [acc [match replacement]] (string/replace acc match replacement))
+            word replacements)))
+
+(defn fixup-word-reducer [config]
   (let [capitalise? (comp (->> (:capitalise config) (map string/lower-case) set)
                           string/lower-case)
         downcase? (comp (->> (:downcase config) (map string/lower-case) set)
                         string/lower-case)]
     (fn [{:keys [prev] :as acc} pronunciation]
       (let [update-fn
-            (cond
-              (nil? prev)
-              string/capitalize
+            (comp (partial apply-replacements config)
+                  (cond
+                    (nil? prev)
+                    string/capitalize
 
-              (capitalise? (->word pronunciation))
-              string/capitalize
+                    (capitalise? (->word pronunciation))
+                    string/capitalize
 
-              (downcase? (->word pronunciation))
-              string/lower-case
+                    (downcase? (->word pronunciation))
+                    string/lower-case
 
-              :else
-              identity)]
+                    :else
+                    identity))]
         (-> acc
             (update :pronunciations conj (update-word pronunciation update-fn))
             (assoc :prev pronunciation))))))
 
-(defn capitalise [config pronunciations]
+(defn fixup-word [config pronunciations]
   (->> pronunciations
-       (reduce (capitalise-reducer config)
+       (reduce (fixup-word-reducer config)
                {:pronunciations []
                 :prev nil})
        :pronunciations))
 
 (defn process-sentences [config sentences]
   (->> sentences
-       (map (comp (partial capitalise config)
+       (map (comp (partial fixup-word config)
                   (partial remove-fillers config)))))
 
 (defn fixup-punctuation-timestamps [{:keys [last-end-time] :as acc}
