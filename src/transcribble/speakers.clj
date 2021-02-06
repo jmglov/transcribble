@@ -50,3 +50,12 @@
                         (merge acc)))
                  {}))
     {}))
+
+(defn reposition
+  "Ensure that the person speaking first is labelled as spk_0"
+  [speakers parts]
+  (if (= "spk_0" (->> parts first :speaker))
+    speakers
+    (assoc speakers
+           "spk_0" (speakers "spk_1")
+           "spk_1" (speakers "spk_0"))))

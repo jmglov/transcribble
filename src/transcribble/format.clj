@@ -51,6 +51,7 @@
                           (filter (fn [[speaker _]] speaker))
                           count)
         format-fn (formatters formatter)
+        speakers (speakers/reposition speakers parts)
         abbreviated-speakers (speakers/abbreviate abbreviator speakers)
         label-speakers
         (fn [parts]
