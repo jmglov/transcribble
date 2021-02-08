@@ -51,6 +51,10 @@
                  {}))
     {}))
 
+(defn num-speakers [config results]
+  (min (count (:speakers config))
+       (get-in results [:speaker_labels :speakers])))
+
 (defn reposition
   "Ensure that the person speaking first is labelled as spk_0"
   [speakers parts]

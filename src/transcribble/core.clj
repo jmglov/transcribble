@@ -161,7 +161,7 @@
   (let [{:keys [results]} (load-json-file filename)
         speaker-at (speakers/build-speaker-at config results)
         pronunciations (:items results)
-        split (if (> (count (:speakers config)) 1)
+        split (if (> (speakers/num-speakers config results) 1)
                 (partial partition-speakers config speaker-at)
                 (partial partition-durations config (first-start-time pronunciations)))]
     (->> pronunciations
