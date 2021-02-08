@@ -1,6 +1,8 @@
 (ns transcribble.speakers
   (:require [clojure.string :as string]))
 
+(def titles-re #"(Dr|Mr|Mrs|Ms)([.])?")
+
 (def abbreviators
   {:initials
    (fn [speaker]
@@ -13,9 +15,15 @@
    (fn [speaker]
      (let [names (string/split speaker #"\s")]
        (cond
-         (= (count names) 1) speaker
-         (= "Dr." (first names)) (string/join " " [(first names) (last names)])
-         :else (first names))))})
+         (= (count names) 1)
+         speaker
+
+         (re-matches titles-re (first names))
+         (string/join " " [(string/replace (first names) titles-re "$1.")
+                           (last names)])
+
+         :else
+         (first names))))})
 
 (defn ->speaker-label [speaker-num]
   (str "spk_" speaker-num))
