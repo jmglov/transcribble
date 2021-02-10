@@ -15,15 +15,23 @@
          (map (partial format "%02d"))
          (string/join ":"))))
 
-(defn otr-reducer [acc {:keys [start-time speaker words]}]
-  (-> acc
-      (conj [:p
-             [:span {:class "timestamp" :data-timestamp start-time}
-              (->timestamp start-time)]
-             (if speaker
-               (format "<b>%s</b>: %s" speaker words)
-               words)])
-      (conj [:br])))
+(defn otr-reducer [acc {:keys [start-time speaker words] :as section}]
+  (try
+    (-> acc
+        (conj [:p
+               [:span {:class "timestamp" :data-timestamp start-time}
+                (->timestamp start-time)]
+               (if speaker
+                 (format "<b>%s</b>: %s" speaker words)
+                 words)])
+        (conj [:br]))
+    (catch Exception e
+      (println "Failed to format" (pr-str section) (class e) (.getMessage e))
+      (println "Last successful section" (->> acc
+                                              reverse
+                                              (drop 1)
+                                              first))
+      (throw e))))
 
 (def formatters
   {:plaintext
