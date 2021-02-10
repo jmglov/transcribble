@@ -168,4 +168,5 @@
          split
          (map (comp (partial ->part config)
                     (partial apply concat)
-                    (partial process-sentences config))))))
+                    (partial process-sentences config)))
+         (filter :words))))
