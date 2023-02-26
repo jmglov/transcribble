@@ -1,7 +1,7 @@
-{:paths ["src"]
- :deps {org.clojure/clojure {:mvn/version "1.10.1"}
-        cheshire/cheshire {:mvn/version "5.9.0"}
-        hiccup/hiccup {:mvn/version "1.0.5"}}
+{:deps {cheshire/cheshire {:mvn/version "5.9.0"}
+        clj-pdf/clj-pdf {:mvn/version "2.6.2"}
+        hiccup/hiccup {:mvn/version "1.0.5"}
+        org.clj-commons/hickory {:mvn/version "0.7.3"}}
  ;; See https://github.com/luchiniatwork/cambada#caveats
  :mvn/repos {"central" {:url "https://repo1.maven.org/maven2/"}
              "clojars" {:url "https://repo.clojars.org/"}}

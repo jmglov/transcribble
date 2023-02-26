@@ -50,7 +50,13 @@
        (-> {:text text
             :media media-file
             :media-time 0.0}
-           (json/generate-string {:pretty true}))))})
+           (json/generate-string {:pretty true}))))
+
+   :paragraphs
+   (fn [_ data]
+     (->> data
+          (map (fn [{:keys [_start-time speaker words]}]
+                 (format "%s%s" (if speaker (format "%s: " speaker) "") words)))))})
 
 (defn format-parts [{:keys [abbreviate-after abbreviator formatter speakers] :as config}
                     media-filename parts]

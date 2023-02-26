@@ -1,13 +1,24 @@
 (ns transcribble.main
   (:require [transcribble.core :as core]
             [transcribble.format :as format]
+            [transcribble.otr :as otr]
+            [transcribble.pdf :as pdf]
             [transcribble.speakers :as speakers])
   (:gen-class))
 
 (defn -main [& args]
-  (if (= "--fixup-otr" (first args))
+  (cond
+    (= "--fixup-otr" (first args))
     (let [[_ filename] args]
       (format/fixup-otr filename))
+
+    (= "--convert-otr" (first args))
+    (let [[_ otr-filename pdf-filename title & [config-filename]] args
+          config (core/load-config config-filename)
+          paragraphs (otr/load-otr otr-filename)]
+      (pdf/write-pdf! config title paragraphs pdf-filename))
+
+    :else
     (let [[transcribe-filename output-filename media-filename speaker-names
            & [config-filename]] args
           speakers (speakers/make-speakers-map speaker-names)
