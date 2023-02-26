@@ -6,24 +6,26 @@
 (def abbreviators
   {:initials
    (fn [speaker]
-     (let [names (string/split speaker #"\s")]
-       (if (> (count names) 1)
-         (->> names (map first) string/join)
-         speaker)))
+     (when speaker
+       (let [names (string/split speaker #"\s")]
+         (if (> (count names) 1)
+           (->> names (map first) string/join)
+           speaker))))
 
    :first-name-or-title
    (fn [speaker]
-     (let [names (string/split speaker #"\s")]
-       (cond
-         (= (count names) 1)
-         speaker
+     (when speaker
+       (let [names (string/split speaker #"\s")]
+         (cond
+           (= (count names) 1)
+           speaker
 
-         (re-matches titles-re (first names))
-         (string/join " " [(string/replace (first names) titles-re "$1.")
-                           (last names)])
+           (re-matches titles-re (first names))
+           (string/join " " [(string/replace (first names) titles-re "$1.")
+                             (last names)])
 
-         :else
-         (first names))))})
+           :else
+           (first names)))))})
 
 (defn ->speaker-label [speaker-num]
   (str "spk_" speaker-num))
@@ -61,7 +63,7 @@
 
 (defn num-speakers [config results]
   (min (count (:speakers config))
-       (get-in results [:speaker_labels :speakers])))
+       (get-in results [:speaker_labels :speakers] 1)))
 
 (defn reposition
   "Ensure that the person speaking first is labelled as spk_0"

@@ -36,21 +36,21 @@
 (def formatters
   {:plaintext
    (fn [_ data]
-                (->> data
-                     (map (fn [{:keys [start-time speaker words]}]
-                            (str (->timestamp start-time) "\n\n" speaker ": " words)))
-                     (string/join "\n\n")))
+     (->> data
+          (map (fn [{:keys [start-time speaker words]}]
+                 (str (->timestamp start-time) "\n\n" speaker ": " words)))
+          (string/join "\n\n")))
 
    :otr
    (fn [media-file data]
-          (let [text (->> data
-                          (reduce otr-reducer [])
-                          (map (fn [el] (hiccup/html el)))
-                          (string/join "\n"))]
-            (-> {:text text
-                 :media media-file
-                 :media-time 0.0}
-                (json/generate-string {:pretty true}))))})
+     (let [text (->> data
+                     (reduce otr-reducer [])
+                     (map (fn [el] (hiccup/html el)))
+                     (string/join "\n"))]
+       (-> {:text text
+            :media media-file
+            :media-time 0.0}
+           (json/generate-string {:pretty true}))))})
 
 (defn format-parts [{:keys [abbreviate-after abbreviator formatter speakers] :as config}
                     media-filename parts]
@@ -76,7 +76,7 @@
     (when-not format-fn
       (throw (ex-info "Invalid formatter" {:transcribble/formatter formatter})))
     (->> parts
-         (drop-while #(and (> (count speakers) 1) (nil? (:speaker %))))
+         (drop-while #(and (> num-speakers 1) (nil? (:speaker %))))
          label-speakers
          (format-fn media-filename))))
 
