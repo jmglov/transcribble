@@ -1,0 +1,13 @@
+{:paths ["src"]
+ :bbin/bin {transcribble {:ns-default transcribble.api}}
+ :deps {jmglov/transcribble {:local/root "."}}
+ :tasks
+ {:init (let [opts (merge {:aws-region (or (System/getenv "AWS_DEFAULT_REGION")
+                                           (System/getenv "AWS_REGION")
+                                           "eu-west-1")}
+                          {})])
+  :requires ([transcribble.cli :as cli])
+
+  transcribble {:task (cli/dispatch opts)}
+
+  }}

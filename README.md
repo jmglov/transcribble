@@ -135,3 +135,60 @@ started. If `split-duration-secs` is not specified, it defaults to 30.
 ```bash
 ./bin/build
 ```
+
+## Command-line interface
+
+Add a `bb.edn` to a directory where you want to use Transcribble like this:
+
+``` clojure
+{:deps {jmglov/transcribble {:local/root "/path/to/transcribble/cli"}}
+ :tasks
+ {:requires ([babashka.fs :as fs]
+             [transcribble.cli :as cli])
+  :init (def opts {:aws-region "eu-west-1"
+                   :s3-bucket "YOUR_BUCKET_HERE"
+                   :s3-media-path (fs/file-name (fs/cwd))
+                   :media-separator "_"
+                   :language-code "en-US"})
+
+  transcribble {:doc "Transcribe all the things!"
+                :task (cli/dispatch opts)}
+  }}
+```
+
+Then you can run commands like this:
+
+``` text
+bb transcribble --help
+Usage: bb transcribble <subcommand> <options>
+
+Subcommands:
+
+  init-job: Set up files for transcription
+    --media-file <file> Media file to transribe
+  start-job: Start transcription job
+    --media-file    <file>           Media file to transribe
+    --language-code <lang>     en-US IETF language tag
+    --speakers      <speakers>       List of speakers
+  job-status: Get transcription job status
+    --media-file <file> Media file being transcribed
+  download-transcript: Download completed transcript
+    --media-file <file> Media file being transcribed
+  convert-transcript: Convert downloaded transcript
+    --media-file <file>     Media file which has been transcribed
+    --speakers   <speakers> List of speakers
+  process-file: Initialise and start job, then download and convert transcript
+    --media-file <file>     Media file to transribe
+    --speakers   <speakers> List of speakers
+
+Options:
+
+Aws config
+  --aws-region          <region-name> eu-west-1             AWS region
+  --s3-bucket           <bucket-name> misc.jmglov.net       S3 bucket in which to store media files and transcripts
+  --s3-media-path       <prefix>      Techs_Looming_Threats S3 prefix for media files
+  --s3-transcripts-path <prefix>                            S3 prefix for transcript files (defaults to s3-media-path)
+
+Basic config
+  --media-separator <string> _ Replace spaces in media files with this string
+```
