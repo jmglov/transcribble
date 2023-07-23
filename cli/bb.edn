@@ -1,13 +1,16 @@
 {:paths ["src"]
- :bbin/bin {transcribble {:ns-default transcribble.api}}
+ :bbin/bin {transcribble {:ns-default transcribble.job}}
  :deps {jmglov/transcribble {:local/root "."}}
  :tasks
- {:init (let [opts (merge {:aws-region (or (System/getenv "AWS_DEFAULT_REGION")
-                                           (System/getenv "AWS_REGION")
-                                           "eu-west-1")}
-                          {})])
-  :requires ([transcribble.cli :as cli])
+ {:requires ([babashka.fs :as fs]
+             [clojure.edn :as edn]
+             [transcribble.cli :as cli])
 
+  :init (def opts (merge {:aws-region (or (System/getenv "AWS_DEFAULT_REGION")
+                                          (System/getenv "AWS_REGION")
+                                          "eu-west-1")}
+                         (when (fs/exists? "config.edn")
+                           (edn/read-string (slurp "config.edn")))))
   transcribble {:task (cli/dispatch opts)}
 
   }}

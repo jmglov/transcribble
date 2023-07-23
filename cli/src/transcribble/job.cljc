@@ -9,6 +9,11 @@
       :require true
       :group :aws-config}
 
+     :media-dir
+     {:desc "Path to media files on local filesystem (defaults to current dir)"
+      :ref "<dir>"
+      :group :basic-config}
+
      :s3-bucket
      {:desc "S3 bucket in which to store media files and transcripts"
       :ref "<bucket-name>"
@@ -38,15 +43,35 @@
      {:desc "Path to Transcribble JAR file to use for conversion"
       :ref "<path>"
       :group :conversion-options}
+
+     :dry-run
+     {:desc "Just print what would be done"
+      :group :basic-config}
+
+     :verbose
+     {:desc "Print config and extra debugging information"
+      :alias :v
+      :group :basic-config}
      }}}
   (:require [babashka.fs :as fs]
             [babashka.process :refer [shell]]
             [com.grzm.awyeah.client.api :as aws]
             [clojure.java.io :as io]
-            [clojure.string :as str]))
+            [clojure.pprint :refer [pprint]]
+            [clojure.string :as str]
+            [transcribble.util :refer [do-or-dry-run]]))
 
-;; Don't ask
+;; Binding at top-level in order to make it stringable. I honestly don't why
+;; this is necessary, but I guess you can ask on #babashka if you're curious.
 (def this-file *file*)
+
+(defn apply-defaults [{:keys [media-file] :as opts}]
+  (let [opts (merge {:media-dir (fs/cwd)}
+                    opts)
+        opts (if (and media-file (not (fs/exists? media-file)))
+               (assoc opts :media-file (fs/file (:media-dir opts) media-file))
+               opts)]
+    opts))
 
 (defn mk-s3-client [{:keys [aws-region] :as opts}]
   (aws/client {:api :s3, :region aws-region}))
@@ -63,20 +88,42 @@
 (defn mk-media-path [{:keys [s3-bucket media-file] :as opts}]
   (format "s3://%s/%s" s3-bucket (mk-media-key opts)))
 
-(defn ensure-media! [{:keys [s3 s3-bucket media-file] :as opts}]
+(defn mk-s3-key [{:keys [media-dir s3-media-path] :as opts} filename]
+  (->> (str/replace-first (str filename)
+                          (re-pattern (format "^%s/" (str/replace media-dir #"/$" "")))
+                          "")
+       (fs/file s3-media-path)
+       str))
+
+(defn print-config [{:keys [verbose] :as opts}]
+  (when verbose
+    (pprint opts)))
+
+(defn log [obj msg {:keys [verbose] :as opts}]
+  (when verbose
+    (println msg)
+    (pprint obj))
+  obj)
+
+(defn upload-to-s3! [{:keys [s3 s3-bucket replace-existing] :as opts} filename]
   (let [s3 (or s3 (mk-s3-client opts))
-        media-key (mk-media-key opts)
-        media-path (mk-media-path opts)
+        s3-key (log (mk-s3-key opts filename)
+                    "Checking to see if object exists:" opts)
         s3-obj (aws/invoke s3 {:op :HeadObject
                                :request {:Bucket s3-bucket
-                                         :Key media-key}})]
-    (when-not (:ETag s3-obj)
-      (println (format "Media file does not exist at %s; uploading" media-path))
-      (with-open [is (io/input-stream media-file)]
+                                         :Key s3-key}})]
+    (when (or (not (:ETag s3-obj)) replace-existing)
+      (when-not (:ETag s3-obj)
+        (println (format "Object does not exist at %s; uploading %s" s3-key filename)))
+      (with-open [is (io/input-stream filename)]
         (aws/invoke s3 {:op :PutObject
                         :request {:Bucket s3-bucket
-                                  :Key media-key
-                                  :Body is}})))
+                                  :Key s3-key
+                                  :Body is}})))))
+
+(defn ensure-media! [opts]
+  (let [media-path (mk-media-path opts)]
+    (upload-to-s3! opts (mk-media-key opts))
     media-path))
 
 (defn init-job!
@@ -281,3 +328,18 @@
 
                        (println "Transcription finished with error:" res))))]
     (println "Transcription completed; OTR file:" otr-file)))
+
+(defn save-otr! [{:keys [downloads-dir media-dir media-file s3-bucket s3-media-path
+                         dry-run verbose] :as opts}]
+  (print-config opts)
+  (let [sort-by-mtime #(sort-by fs/last-modified-time %)
+        job-name' (job-name media-file)
+        tgt-file (fs/file media-dir job-name' (format "%s.otr" job-name'))
+        src-file (-> (fs/glob downloads-dir "*.otr")
+                     sort-by-mtime
+                     (log "Considering OTR files:" opts)
+                     last)]
+    (println "Copying" (str src-file) "to" (str tgt-file))
+    (do-or-dry-run opts
+                   (fs/copy src-file tgt-file {:replace-existing true})
+                   (upload-to-s3! (assoc opts :replace-existing true) (str tgt-file)))))

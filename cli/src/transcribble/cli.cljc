@@ -125,6 +125,10 @@ Options:
                ["process-file"
                 "Initialise and start job, then download and convert transcript"
                 #'job/process-file]
+
+               ["save-otr"
+                "Save the latest OTR file to S3"
+                #'job/save-otr!]
                ])]
     (conj cmds
           {:cmds [], :fn (fn [m] (print-help global-specs cmds))})))
@@ -133,17 +137,9 @@ Options:
   ([]
    (dispatch {}))
   ([default-opts & args]
-   (cli/dispatch (mk-table default-opts)
+   (cli/dispatch (mk-table (job/apply-defaults default-opts))
                  (or args
                      (seq *command-line-args*)))))
-
-(defn run
-  "Meant to be called using `clj -M:transcribble`; see Quickstart > Clojure in README"
-  [default-opts]
-  ;; *command-line-args* will start with `(transcribble.cli run ...)`, so we need to
-  ;; get rid of the first two items to get at what we care about
-  (let [args (drop 2 *command-line-args*)]
-    (apply dispatch default-opts args)))
 
 (defn -main [& args]
   (apply dispatch {} args))

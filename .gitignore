@@ -3,3 +3,4 @@
 pom.xml
 target/
 dev/
+config.edn
