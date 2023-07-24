@@ -129,6 +129,10 @@ Options:
                ["save-otr"
                 "Save the latest OTR file to S3"
                 #'job/save-otr!]
+
+               ["convert-pdf"
+                "Convert OTR file to PDF"
+                #'job/convert-pdf!]
                ])]
     (conj cmds
           {:cmds [], :fn (fn [m] (print-help global-specs cmds))})))

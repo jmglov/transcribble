@@ -39,11 +39,6 @@
       :require true
       :group :basic-config}
 
-     :transcribble-jar
-     {:desc "Path to Transcribble JAR file to use for conversion"
-      :ref "<path>"
-      :group :conversion-options}
-
      :dry-run
      {:desc "Just print what would be done"
       :group :basic-config}
@@ -58,15 +53,15 @@
             [com.grzm.awyeah.client.api :as aws]
             [clojure.java.io :as io]
             [clojure.pprint :refer [pprint]]
-            [clojure.string :as str]
-            [transcribble.util :refer [do-or-dry-run]]))
+            [clojure.string :as str]))
 
 ;; Binding at top-level in order to make it stringable. I honestly don't why
 ;; this is necessary, but I guess you can ask on #babashka if you're curious.
 (def this-file *file*)
 
 (defn apply-defaults [{:keys [media-file] :as opts}]
-  (let [opts (merge {:media-dir (fs/cwd)}
+  (let [opts (merge {:downloads-dir (fs/file (fs/home) "Downloads")
+                     :media-dir (fs/cwd)}
                     opts)
         opts (if (and media-file (not (fs/exists? media-file)))
                (assoc opts :media-file (fs/file (:media-dir opts) media-file))
@@ -78,6 +73,11 @@
 
 (defn mk-transcribe-client [{:keys [aws-region] :as opts}]
   (aws/client {:api :transcribe, :region aws-region}))
+
+(defn absolute-path [{:keys [media-dir]} filename]
+  (if (fs/absolute? filename)
+    filename
+    (fs/file media-dir filename)))
 
 (defn job-name [media-file]
   (str/replace (fs/file-name media-file) #"[.][^.]+$" ""))
@@ -105,14 +105,17 @@
     (pprint obj))
   obj)
 
-(defn upload-to-s3! [{:keys [s3 s3-bucket replace-existing] :as opts} filename]
+(defn upload-to-s3! [{:keys [s3 s3-bucket replace-existing
+                             dry-run] :as opts} filename]
   (let [s3 (or s3 (mk-s3-client opts))
         s3-key (log (mk-s3-key opts filename)
                     "Checking to see if object exists:" opts)
-        s3-obj (aws/invoke s3 {:op :HeadObject
-                               :request {:Bucket s3-bucket
-                                         :Key s3-key}})]
-    (when (or (not (:ETag s3-obj)) replace-existing)
+        s3-obj (when-not dry-run
+                 (aws/invoke s3 {:op :HeadObject
+                                 :request {:Bucket s3-bucket
+                                           :Key s3-key}}))]
+    (when (and (not dry-run)
+               (or (not (:ETag s3-obj)) replace-existing))
       (when-not (:ETag s3-obj)
         (println (format "Object does not exist at %s; uploading %s" s3-key filename)))
       (with-open [is (io/input-stream filename)]
@@ -130,7 +133,7 @@
   {:org.babashka/cli
    {:spec
     {:media-file
-     {:desc "Media file to transribe"
+     {:desc "Media file to transcribe"
       :ref "<file>"
       :require true}
      }}}
@@ -147,7 +150,7 @@
   {:org.babashka/cli
    {:spec
     {:media-file
-     {:desc "Media file to transribe"
+     {:desc "Media file to transcribe"
       :ref "<file>"
       :require true}
 
@@ -280,7 +283,7 @@
   {:org.babashka/cli
    {:spec
     {:media-file
-     {:desc "Media file to transribe"
+     {:desc "Media file to transcribe"
       :ref "<file>"
       :require true}
 
@@ -329,17 +332,59 @@
                        (println "Transcription finished with error:" res))))]
     (println "Transcription completed; OTR file:" otr-file)))
 
-(defn save-otr! [{:keys [downloads-dir media-dir media-file s3-bucket s3-media-path
-                         dry-run verbose] :as opts}]
-  (print-config opts)
-  (let [sort-by-mtime #(sort-by fs/last-modified-time %)
+(defn save-otr!
+  {:org.babashka/cli
+   {:spec
+    {:otr-dir
+     {:desc "Path to OTR backups on local filesystem (defaults to ~/Downloads)"
+      :ref "<dir>"}
+
+     :media-file
+     {:desc "Media file to transcribe"
+      :ref "<file>"
+      :require true}
+     }}}
+  [opts]
+  (let [{:keys [downloads-dir media-dir media-file
+                dry-run verbose] :as opts} (apply-defaults opts)
+        _ (print-config opts)
+        sort-by-mtime #(sort-by fs/last-modified-time %)
+        job-dir (fs/parent media-file)
         job-name' (job-name media-file)
-        tgt-file (fs/file media-dir job-name' (format "%s.otr" job-name'))
+        tgt-file (fs/file media-dir job-dir (format "%s.otr" job-name'))
         src-file (-> (fs/glob downloads-dir "*.otr")
                      sort-by-mtime
                      (log "Considering OTR files:" opts)
                      last)]
     (println "Copying" (str src-file) "to" (str tgt-file))
-    (do-or-dry-run opts
-                   (fs/copy src-file tgt-file {:replace-existing true})
-                   (upload-to-s3! (assoc opts :replace-existing true) (str tgt-file)))))
+    (when-not dry-run
+      (fs/copy src-file tgt-file {:replace-existing true}))
+    (upload-to-s3! (assoc opts :replace-existing true) (str tgt-file))))
+
+(defn convert-pdf!
+  {:org.babashka/cli
+   {:spec
+    {:otr-file
+     {:desc "OTR file to convert"
+      :ref "<file>"
+      :require true}
+
+     :transcribble-jar
+     {:desc "Path to Transcribble JAR file to use for conversion"
+      :ref "<path>"
+      :require true}
+     }}}
+  [{:keys [media-dir media-separator otr-file transcribble-jar
+           dry-run] :as opts}]
+  (let [otr-file (absolute-path opts otr-file)
+        pdf-filename (str/replace (str otr-file) #"[.]otr$" ".pdf")
+        title (str/replace (job-name otr-file) media-separator " ")
+        config-filename (absolute-path opts "config.json")
+        args (concat ["java" "-jar" (str transcribble-jar)
+                      "--convert-otr"
+                      (str otr-file) (str pdf-filename) title]
+                     (when (fs/exists? config-filename)
+                       [(str config-filename)]))]
+    (println (str/join " " args))
+    (when-not dry-run
+      (shell args))))
