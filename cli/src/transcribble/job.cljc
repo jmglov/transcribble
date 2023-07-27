@@ -59,6 +59,16 @@
 ;; this is necessary, but I guess you can ask on #babashka if you're curious.
 (def this-file *file*)
 
+(defn print-config [{:keys [verbose suppress-print-config?] :as opts}]
+  (when (and verbose (not suppress-print-config?))
+    (pprint (dissoc opts :s3 :transcribe))))
+
+(defn log [obj msg {:keys [verbose] :as opts}]
+  (when verbose
+    (println msg)
+    (pprint obj))
+  obj)
+
 (defn apply-defaults [{:keys [media-file] :as opts}]
   (let [opts (merge {:downloads-dir (fs/file (fs/home) "Downloads")
                      :media-dir (fs/cwd)}
@@ -74,59 +84,74 @@
 (defn mk-transcribe-client [{:keys [aws-region] :as opts}]
   (aws/client {:api :transcribe, :region aws-region}))
 
-(defn absolute-path [{:keys [media-dir]} filename]
+(defn absolute-path [{:keys [media-dir] :as opts} filename]
   (if (fs/absolute? filename)
     filename
     (fs/file media-dir filename)))
 
+(defn relative-path [{:keys [media-dir] :as opts} filename]
+  (let [abs-filename (absolute-path opts filename)]
+    (fs/relativize media-dir abs-filename)))
+
 (defn job-name [media-file]
   (str/replace (fs/file-name media-file) #"[.][^.]+$" ""))
 
-(defn mk-media-key [{:keys [s3-media-path media-file] :as opts}]
-  (format "%s/%s" s3-media-path media-file))
+(defn mk-media-key [{:keys [media-file s3-media-path] :as opts}]
+  (format "%s/%s" s3-media-path (relative-path opts media-file)))
 
-(defn mk-media-path [{:keys [s3-bucket media-file] :as opts}]
+(defn mk-media-path [{:keys [s3-bucket] :as opts}]
   (format "s3://%s/%s" s3-bucket (mk-media-key opts)))
 
 (defn mk-s3-key [{:keys [media-dir s3-media-path] :as opts} filename]
-  (->> (str/replace-first (str filename)
+  (->> (str/replace-first (str (relative-path opts filename))
                           (re-pattern (format "^%s/" (str/replace media-dir #"/$" "")))
                           "")
        (fs/file s3-media-path)
        str))
 
-(defn print-config [{:keys [verbose] :as opts}]
-  (when verbose
-    (pprint opts)))
-
-(defn log [obj msg {:keys [verbose] :as opts}]
-  (when verbose
-    (println msg)
-    (pprint obj))
-  obj)
+(defn mk-dry-run-job-status
+  "Fake job status for dry run mode"
+  [{:keys [TranscriptionJobStatus]
+    :or {TranscriptionJobStatus "COMPLETED"}
+    :as opts}]
+  {:MediaFormat "mp3"
+   :CompletionTime #inst "2023-07-27T05:09:54.000-00:00"
+   :MediaSampleRateHertz 44100
+   :TranscriptionJobName "Pariss_Chandler"
+   :StartTime #inst "2023-07-27T05:05:00.000-00:00"
+   :Settings {:ShowSpeakerLabels true
+              :MaxSpeakerLabels 2
+              :ChannelIdentification false
+              :ShowAlternatives false}
+   :CreationTime #inst "2023-07-27T05:05:00.000-00:00"
+   :Transcript {:TranscriptFileUri "https://s3.eu-west-1.amazonaws.com/misc.jmglov.net/Techs_Looming_Threats/output/Pariss_Chandler.json"}
+   :TranscriptionJobStatus TranscriptionJobStatus
+   :LanguageCode "en-US"
+   :Media {:MediaFileUri "s3://misc.jmglov.net/Techs_Looming_Threats/Pariss_Chandler/Pariss_Chandler.mp3"}})
 
 (defn upload-to-s3! [{:keys [s3 s3-bucket replace-existing
                              dry-run] :as opts} filename]
   (let [s3 (or s3 (mk-s3-client opts))
         s3-key (log (mk-s3-key opts filename)
-                    "Checking to see if object exists:" opts)
+                    (format "Checking to see if object for %s exists:" (str filename))
+                    opts)
         s3-obj (when-not dry-run
                  (aws/invoke s3 {:op :HeadObject
                                  :request {:Bucket s3-bucket
                                            :Key s3-key}}))]
-    (when (and (not dry-run)
-               (or (not (:ETag s3-obj)) replace-existing))
+    (when (or (not (:ETag s3-obj)) replace-existing)
       (when-not (:ETag s3-obj)
         (println (format "Object does not exist at %s; uploading %s" s3-key filename)))
-      (with-open [is (io/input-stream filename)]
-        (aws/invoke s3 {:op :PutObject
-                        :request {:Bucket s3-bucket
-                                  :Key s3-key
-                                  :Body is}})))))
+      (when-not dry-run
+        (with-open [is (io/input-stream filename)]
+          (aws/invoke s3 {:op :PutObject
+                          :request {:Bucket s3-bucket
+                                    :Key s3-key
+                                    :Body is}}))))))
 
-(defn ensure-media! [opts]
+(defn ensure-media! [{:keys [media-file] :as opts}]
   (let [media-path (mk-media-path opts)]
-    (upload-to-s3! opts (mk-media-key opts))
+    (upload-to-s3! opts media-file)
     media-path))
 
 (defn init-job!
@@ -137,8 +162,9 @@
       :ref "<file>"
       :require true}
      }}}
-  [{:keys [media-file media-separator] :as opts}]
-  (let [tgt-media-file (-> media-file fs/file-name (str/replace " " media-separator))
+  [opts]
+  (let [{:keys [media-file media-separator] :as opts} (apply-defaults opts)
+        tgt-media-file (-> media-file fs/file-name (str/replace " " media-separator))
         job-name (job-name tgt-media-file)
         tgt-dir (fs/file job-name)]
     (fs/create-dirs tgt-dir)
@@ -169,11 +195,14 @@
      {:desc "Function which called with opts returns a list of speakers"
       :ref "<fn>"}
      }}}
-  [{:keys [s3-bucket s3-media-path
-           media-file language-code speakers speakers-fn
-           transcribe]
-    :as opts}]
-  (let [transcribe (or transcribe (mk-transcribe-client opts))
+  [opts]
+  (let [{:keys [s3-bucket s3-media-path
+                media-file language-code speakers speakers-fn
+                dry-run verbose
+                transcribe]
+         :as opts} (apply-defaults opts)
+        _ (print-config opts)
+        transcribe (or transcribe (mk-transcribe-client opts))
         media-path (ensure-media! opts)
         speakers (if speakers-fn (speakers-fn opts) speakers)
         request (merge {:TranscriptionJobName (job-name media-file)
@@ -184,8 +213,12 @@
                        (when (> (count speakers) 1)
                          {:Settings {:ShowSpeakerLabels true
                                      :MaxSpeakerLabels (count speakers)}}))]
-    (aws/invoke transcribe {:op :StartTranscriptionJob
-                            :request request})))
+    (if (or dry-run verbose)
+      (log request "Starting transcription job" (assoc opts :verbose true)))
+    (if dry-run
+      (mk-dry-run-job-status (assoc opts :TranscriptionJobStatus "IN_PROGRESS"))
+      (aws/invoke transcribe {:op :StartTranscriptionJob
+                              :request request}))))
 
 (defn job-status
   {:org.babashka/cli
@@ -195,11 +228,19 @@
       :ref "<file>"
       :require true}
      }}}
-  [{:keys [transcribe media-file] :as opts}]
-  (let [transcribe (or transcribe (mk-transcribe-client opts))]
-    (-> (aws/invoke transcribe {:op :GetTranscriptionJob
-                                :request {:TranscriptionJobName (job-name media-file)}})
-        :TranscriptionJob)))
+  [opts]
+  (let [{:keys [transcribe media-file
+                dry-run verbose] :as opts} (apply-defaults opts)
+        _ (print-config opts)
+        transcribe (or transcribe (mk-transcribe-client opts))
+        job-name (job-name media-file)]
+    (when (or dry-run verbose)
+      (log job-name "Getting job status for job name:" (assoc opts :verbose true)))
+    (if dry-run
+      (mk-dry-run-job-status opts)
+      (-> (aws/invoke transcribe {:op :GetTranscriptionJob
+                                  :request {:TranscriptionJobName job-name}})
+          :TranscriptionJob))))
 
 (defn download-transcript
   {:org.babashka/cli
@@ -209,10 +250,14 @@
       :ref "<file>"
       :require true}
      }}}
-  [{:keys [s3 transcribe s3-bucket media-file] :as opts}]
-  (let [s3 (or s3 (mk-s3-client opts))
+  [opts]
+  (let [{:keys [s3 transcribe s3-bucket media-file
+                dry-run verbose] :as opts} (apply-defaults opts)
+        _ (print-config opts)
+        s3 (or s3 (mk-s3-client opts))
         transcribe (or transcribe (mk-transcribe-client opts))
         {:keys [Transcript TranscriptionJobStatus] :as res} (job-status opts)]
+    (log res "Transcription job status:" res)
     (if (= "COMPLETED" TranscriptionJobStatus)
       (let [{:keys [TranscriptFileUri]} Transcript
             transcript-key (->> TranscriptFileUri
@@ -221,11 +266,12 @@
             job-name (job-name media-file)
             out-file (format "%s/%s.json" job-name job-name)]
         (println "Downloading" TranscriptFileUri "to" out-file)
-        (-> (aws/invoke s3 {:op :GetObject
-                        :request {:Bucket s3-bucket
-                                  :Key transcript-key}})
-        :Body
-        (io/copy (io/file out-file))))
+        (when-not dry-run
+          (-> (aws/invoke s3 {:op :GetObject
+                              :request {:Bucket s3-bucket
+                                        :Key transcript-key}})
+              :Body
+              (io/copy (io/file out-file)))))
       (println "Transcription job not completed:" res))))
 
 (defn convert-transcript
@@ -244,17 +290,24 @@
      :speakers-fn
      {:desc "Function which called with opts returns a list of speakers"
       :ref "<fn>"}
+
+     :transcribble-jar
+     {:desc "Path to Transcribble JAR file to use for conversion"
+      :ref "<path>"}
      }}}
-  [{:keys [media-file speakers speakers-fn transcribble-jar] :as opts}]
-  (let [absolutize (comp fs/absolutize fs/file)
+  [opts]
+  (let [{:keys [media-file speakers speakers-fn transcribble-jar
+                dry-run verbose] :as opts} (apply-defaults opts)
+        _ (print-config opts)
+        absolutize (partial absolute-path opts)
         cmd (if transcribble-jar
               (format "java -jar %s" transcribble-jar)
               "clojure -m transcribble.main")
         transcript-file (str/replace media-file #".[^.]+$" ".json")
         otr-file (str/replace media-file #".[^.]+$" ".otr")
-        _ (println "speakers-fn:" speakers-fn)
+        _ (log speakers-fn "speakers-fn:" opts)
         speakers (if speakers-fn (speakers-fn opts) speakers)
-        _ (println "Speakers is now:" speakers)
+        _ (log speakers "Speakers:" opts)
         speakers-str (str/join "," speakers)
         args (concat (map absolutize [transcript-file otr-file media-file])
                      [speakers-str]
@@ -267,11 +320,12 @@
         _ (println (format "Running '%s %s' in dir %s"
                            cmd (str/join " " args) transcribble-root))
         {:keys [out err exit] :as res}
-        (apply shell {:dir transcribble-root
-                      :out :string
-                      :err :string
-                      :continue true}
-               cmd args)]
+        (when-not dry-run
+          (apply shell {:dir transcribble-root
+                        :out :string
+                        :err :string
+                        :continue true}
+                 cmd args))]
     (doseq [s [out err]]
       (when-not (empty? s)
         (println s)))
@@ -301,9 +355,23 @@
      :speakers-fn
      {:desc "Function which called with opts returns a list of speakers"
       :ref "<fn>"}
+
+     :transcribble-jar
+     {:desc "Path to Transcribble JAR file to use for conversion"
+      :ref "<path>"
+      :require true}
+
+     :wait-secs
+     {:desc "Number of seconds to wait when polling job status"
+      :ref "<int>"
+      :coerce :long}
      }}}
-  [{:keys [media-file wait-secs] :as opts}]
-  (let [s3 (mk-s3-client opts)
+  [opts]
+  (let [{:keys [media-file wait-secs
+                dry-run verbose] :as opts} (apply-defaults opts)
+        _ (print-config opts)
+        opts (assoc opts :suppress-print-config? true)  ; so subcommands won't print every time
+        s3 (mk-s3-client opts)
         transcribe (mk-transcribe-client opts)
         wait-secs (or wait-secs 30)
         _ (println "Initialising job for file" media-file)
