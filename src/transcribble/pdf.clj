@@ -8,6 +8,7 @@
 
       [:heading title]
 
-      (for [p paragraphs]
-        [:paragraph (get styles :paragraph {}) p])]
+      (for [{:keys [timestamp text]} paragraphs
+            :let [ts-str (if timestamp (format "[%s]\n" timestamp) "")]]
+        [:paragraph (get styles :paragraph {}) (format "%s%s" ts-str text)])]
      outfile)))

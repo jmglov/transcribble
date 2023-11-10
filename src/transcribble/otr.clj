@@ -5,10 +5,10 @@
 (defn parse-paragraph [[_ _ ts-or-contents contents]]
   (cond
     (and (vector? ts-or-contents) (= :span (first ts-or-contents)))
-    (format "[%s] %s" (nth ts-or-contents 2) contents)
+    {:timestamp (nth ts-or-contents 2), :text contents}
 
     (string? ts-or-contents)
-    ts-or-contents
+    {:text ts-or-contents}
 
     :else
     nil))
