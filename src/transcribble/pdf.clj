@@ -2,13 +2,16 @@
   (:require [clj-pdf.core :as pdf]))
 
 (defn write-pdf! [config title paragraphs outfile]
-  (let [styles (get-in config [:pdf :styles])]
+  (let [{:keys [metadata styles]} (:pdf config)]
     (pdf/pdf
-     [{:title title}
+     [(assoc metadata :title title)
 
       [:heading title]
 
-      (for [{:keys [timestamp text]} paragraphs
-            :let [ts-str (if timestamp (format "[%s]\n" timestamp) "")]]
-        [:paragraph (get styles :paragraph {}) (format "%s%s" ts-str text)])]
+      (for [{:keys [timestamp speaker text]} paragraphs
+            :let [ts (when timestamp [(format "[%s]\n" timestamp)])
+                  spk (when speaker [[:chunk (get styles :speaker {})
+                                      (format "%s\n" speaker)]])]]
+        [:paragraph (get styles :paragraph {})
+         (concat ts spk [text])])]
      outfile)))
