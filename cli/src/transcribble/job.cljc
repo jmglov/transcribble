@@ -456,3 +456,29 @@
     (println (str/join " " args))
     (when-not dry-run
       (shell args))))
+
+(defn fixup-otr!
+  {:org.babashka/cli
+   {:spec
+    {:infile
+     {:desc "OTR file to fixup"
+      :ref "<file>"
+      :require true}
+
+     :outfile
+     {:desc "Output file"
+      :ref "<file>"
+      :require true}
+
+     :transcribble-jar
+     {:desc "Path to Transcribble JAR file to use for conversion"
+      :ref "<path>"
+      :require true}
+     }}}
+  [{:keys [media-dir media-separator infile outfile transcribble-jar dry-run]
+    :as opts}]
+  (let [args (concat ["java" "-jar" (str transcribble-jar)
+                      "--fixup-otr" infile outfile])]
+    (println (str/join " " args))
+    (when-not dry-run
+      (shell args))))

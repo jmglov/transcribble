@@ -9,8 +9,12 @@
 (defn -main [& args]
   (cond
     (= "--fixup-otr" (first args))
-    (let [[_ filename] args]
-      (format/fixup-otr filename))
+    (let [[_ infile outfile] args]
+      (when-not (and infile outfile)
+        (binding [*out* System/err]
+          (println "Usage: transcribble --fixup-otr INFILE OUTFILE")
+          (System/exit 1)))
+      (otr/fixup-otr! infile outfile))
 
     (= "--convert-otr" (first args))
     (let [[_ otr-filename pdf-filename title & [config-filename]] args

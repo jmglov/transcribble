@@ -85,10 +85,3 @@
          (drop-while #(and (> num-speakers 1) (nil? (:speaker %))))
          label-speakers
          (format-fn media-filename))))
-
-(defn fixup-otr [otr-file]
-  (spit otr-file
-        (-> (load-json-file otr-file)
-            (update :text string/replace #"<br />" "")
-            (update :text string/replace #"<p>\s*(<b>\s*</b>|\n)?\s*</p>" "")
-            json/generate-string)))

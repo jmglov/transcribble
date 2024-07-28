@@ -133,7 +133,10 @@ Options:
                ["convert-pdf"
                 "Convert OTR file to PDF"
                 #'job/convert-pdf!]
-               ])]
+
+               ["fixup-otr"
+                "Fix OTR formatting"
+                #'job/fixup-otr!]])]
     (conj cmds
           {:cmds [], :fn (fn [m] (print-help global-specs cmds))})))
 

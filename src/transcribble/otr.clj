@@ -1,6 +1,8 @@
 (ns transcribble.otr
   (:require [cheshire.core :as json]
             [clojure.string :as str]
+            [clojure.walk :as walk]
+            [hiccup2.core :as hiccup]
             [hickory.core :as hickory]
             [transcribble.util :refer [->map]]))
 
@@ -43,3 +45,50 @@
 (defn load-otr [filename]
   (-> (slurp filename)
       parse-otr))
+
+(defn concatv [& args]
+  (->> args
+       (apply concat)
+       vec))
+
+(defn remove-empty-paragraphs [hiccup]
+  (->> hiccup
+       (remove #(contains? #{[:br {}]
+                             [:p {} [:br {}]]
+                             "\n"}
+                           %))))
+
+(defn fixup-hiccup [hiccup]
+  (walk/postwalk (fn [node]
+                   (if (and (string? node) (str/includes? node "&"))
+                     (str/replace node "&quot;" "\"")
+                     node))
+                 hiccup))
+
+(defn fixup-paragraph [[p-tag p-attrs & p-contents :as p]]
+  (let [p-contents (remove-empty-paragraphs p-contents)]
+    (if (= :b (ffirst p-contents))
+      (let [[[b-tag b-attrs & b-contents] & p-contents] p-contents]
+        (if (= :span (ffirst b-contents))
+          (let [[span-tag speaker] b-contents]
+            (concatv [p-tag p-attrs
+                      span-tag
+                      [:b b-attrs (str/replace speaker #"^\s+" "")]]
+                     p-contents))
+          p))
+      p)))
+
+(defn fixup-otr! [infile outfile]
+  (let [otr (-> infile slurp (json/parse-string keyword))]
+    (->> otr
+         :text
+         hickory/parse-fragment
+         (map hickory/as-hiccup)
+         fixup-hiccup
+         remove-empty-paragraphs
+         (map fixup-paragraph)
+         hiccup/html
+         str
+         (assoc otr :text)
+         json/generate-string
+         (spit outfile))))
