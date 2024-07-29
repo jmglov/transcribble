@@ -4,7 +4,15 @@
             [clojure.walk :as walk]
             [hiccup2.core :as hiccup]
             [hickory.core :as hickory]
-            [transcribble.util :refer [->map]]))
+            [transcribble.util :refer [->map concatv] :as util]))
+
+(defn ts->sec [ts]
+  (let [[[_ hh mm ss frac]] (re-seq #"^(?:(\d{2}):)?(\d{2}):(\d{2})[.](\d+)$" ts)]
+    (format "%.6f"
+            (+ (-> hh util/parse-int (* 3600))
+               (-> mm util/parse-int (* 60))
+               (-> ss util/parse-int)
+               (-> frac util/parse-fractional)))))
 
 (defn explode-hiccup [[tag attrs content & rest]]
     (let [content (if rest (cons content rest) content)]
@@ -46,11 +54,6 @@
   (-> (slurp filename)
       parse-otr))
 
-(defn concatv [& args]
-  (->> args
-       (apply concat)
-       vec))
-
 (defn remove-empty-paragraphs [hiccup]
   (->> hiccup
        (remove #(contains? #{[:br {}]
@@ -78,6 +81,16 @@
           p))
       p)))
 
+(defn hiccup->otr
+  ([hiccup]
+   (hiccup->otr {} hiccup))
+  ([otr hiccup]
+   (->> hiccup
+        hiccup/html
+        str
+        (assoc otr :text)
+        json/generate-string)))
+
 (defn fixup-otr! [infile outfile]
   (let [otr (-> infile slurp (json/parse-string keyword))]
     (->> otr
@@ -87,8 +100,31 @@
          fixup-hiccup
          remove-empty-paragraphs
          (map fixup-paragraph)
-         hiccup/html
-         str
-         (assoc otr :text)
-         json/generate-string
+         (hiccup->otr otr)
          (spit outfile))))
+
+(defn load-zencastr [filename]
+  (-> (slurp filename)
+      (str/replace "\r\n" "\n")
+      (str/split #"\n\n")))
+
+(defn zencastr->hiccup
+  ([paragraphs]
+   (zencastr->hiccup {} paragraphs))
+  ([speakers paragraphs]
+   (->> paragraphs
+        (map #(let [[ts speaker paragraph] (str/split-lines %)]
+                [:p {}
+                 [:span {:class "timestamp", :data-timestamp (ts->sec ts)} ts]
+                 [:b {} (get speakers speaker speaker)]
+                 (str ": " paragraph)])))))
+
+(defn zencaster->otr!
+  ([infile outfile]
+   (zencaster->otr! infile outfile {}))
+  ([infile outfile speakers]
+   (->> (load-zencastr infile)
+        (zencastr->hiccup speakers)
+        (hiccup->otr {:media-file (str/replace outfile #"^.+/([^/]+)$" "$1")
+                      :media-time 0.0})
+        (spit outfile))))
