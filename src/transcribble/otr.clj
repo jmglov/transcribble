@@ -4,6 +4,7 @@
             [clojure.walk :as walk]
             [hiccup2.core :as hiccup]
             [hickory.core :as hickory]
+            [transcribble.text :as text]
             [transcribble.util :refer [->map concatv] :as util]))
 
 (defn ts->sec [ts]
@@ -61,14 +62,14 @@
                              "\n"}
                            %))))
 
-(defn fixup-hiccup [hiccup]
+(defn fixup-html-quotes [hiccup]
   (walk/postwalk (fn [node]
                    (if (and (string? node) (str/includes? node "&"))
                      (str/replace node "&quot;" "\"")
                      node))
                  hiccup))
 
-(defn fixup-paragraph [[p-tag p-attrs & p-contents :as p]]
+(defn fixup-paragraph [config [p-tag p-attrs & p-contents :as p]]
   (let [p-contents (remove-empty-paragraphs p-contents)]
     (if (= :b (ffirst p-contents))
       (let [[[b-tag b-attrs & b-contents] & p-contents] p-contents]
@@ -81,27 +82,39 @@
           p))
       p)))
 
+(defn fixup-hiccup [config hiccup]
+  (->> hiccup
+       fixup-html-quotes
+       remove-empty-paragraphs
+       (map (partial fixup-paragraph config))))
+
 (defn hiccup->otr
   ([hiccup]
    (hiccup->otr {} hiccup))
-  ([otr hiccup]
+  ([config hiccup]
+   (hiccup->otr config {} hiccup))
+  ([config otr hiccup]
    (->> hiccup
         hiccup/html
         str
+        (text/fix-case config)
+        (text/remove-fillers config)
+        (text/replace-words config)
         (assoc otr :text)
         json/generate-string)))
 
-(defn fixup-otr! [infile outfile]
-  (let [otr (-> infile slurp (json/parse-string keyword))]
-    (->> otr
-         :text
-         hickory/parse-fragment
-         (map hickory/as-hiccup)
-         fixup-hiccup
-         remove-empty-paragraphs
-         (map fixup-paragraph)
-         (hiccup->otr otr)
-         (spit outfile))))
+(defn fixup-otr!
+  ([infile outfile]
+   (fixup-otr! {} infile outfile))
+  ([config infile outfile]
+   (let [otr (-> infile slurp (json/parse-string keyword))]
+     (->> otr
+          :text
+          hickory/parse-fragment
+          (map hickory/as-hiccup)
+          (fixup-hiccup config)
+          (hiccup->otr config otr)
+          (spit outfile)))))
 
 (defn load-zencastr [filename]
   (-> (slurp filename)
@@ -111,20 +124,22 @@
 (defn zencastr->hiccup
   ([paragraphs]
    (zencastr->hiccup {} paragraphs))
-  ([speakers paragraphs]
+  ([config paragraphs]
+   (zencastr->hiccup {} {} paragraphs))
+  ([config speakers paragraphs]
    (->> paragraphs
         (map #(let [[ts speaker paragraph] (str/split-lines %)]
                 [:p {}
-                 [:span {:class "timestamp", :data-timestamp (ts->sec ts)} ts]
+                 [:span {:class "timestamp", :data-timestamp (ts->sec ts)}
+                  (str/replace ts #"[.]\d+$" "")]
                  [:b {} (get speakers speaker speaker)]
-                 (str ": " paragraph)])))))
+                 (str ": " paragraph)]))
+        (fixup-hiccup config))))
 
-(defn zencaster->otr!
-  ([infile outfile]
-   (zencaster->otr! infile outfile {}))
-  ([infile outfile speakers]
-   (->> (load-zencastr infile)
-        (zencastr->hiccup speakers)
-        (hiccup->otr {:media-file (str/replace outfile #"^.+/([^/]+)$" "$1")
-                      :media-time 0.0})
-        (spit outfile))))
+(defn zencaster->otr! [infile outfile config speakers]
+  (->> (load-zencastr infile)
+       (zencastr->hiccup config speakers)
+       (hiccup->otr config
+                    {:media-file (str/replace outfile #"^.+/([^/]+)$" "$1")
+                     :media-time 0.0})
+       (spit outfile)))
