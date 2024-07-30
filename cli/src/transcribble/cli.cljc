@@ -136,7 +136,11 @@ Options:
 
                ["fixup-otr"
                 "Fix OTR formatting"
-                #'job/fixup-otr!]])]
+                #'job/fixup-otr!]
+
+               ["zencastr-to-otr"
+                "Convert Zencastr transcript to OTR"
+                #'job/zencastr->otr!]])]
     (conj cmds
           {:cmds [], :fn (fn [m] (print-help global-specs cmds))})))
 

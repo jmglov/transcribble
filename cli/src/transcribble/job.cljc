@@ -470,15 +470,58 @@
       :ref "<file>"
       :require true}
 
+     :config-filename
+     {:desc "Config file"
+      :ref "<file>"}
+
      :transcribble-jar
      {:desc "Path to Transcribble JAR file to use for conversion"
       :ref "<path>"
       :require true}
      }}}
-  [{:keys [media-dir media-separator infile outfile transcribble-jar dry-run]
+  [{:keys [infile outfile config-filename transcribble-jar dry-run]
     :as opts}]
-  (let [args (concat ["java" "-jar" (str transcribble-jar)
-                      "--fixup-otr" infile outfile])]
+  (let [args ["java" "-jar" (str transcribble-jar)
+              "--fixup-otr" infile outfile (or config-filename "")]]
+    (println (str/join " " args))
+    (when-not dry-run
+      (shell args))))
+
+(defn zencastr->otr!
+  {:org.babashka/cli
+   {:spec
+    {:infile
+     {:desc "Zencastr transcript"
+      :ref "<file>"
+      :require true}
+
+     :outfile
+     {:desc "Output file"
+      :ref "<file>"
+      :require true}
+
+     :config-filename
+     {:desc "Config file"
+      :ref "<file>"}
+
+     :speakers
+     {:desc "List of speaker alias to speaker name; e.g. --speakers jmglov=Josh rai=Ray"
+      :ref "<alias=name>"
+      :coerce []}
+
+     :transcribble-jar
+     {:desc "Path to Transcribble JAR file to use for conversion"
+      :ref "<path>"
+      :require true}
+     }}}
+  [{:keys [infile outfile config-filename speakers transcribble-jar dry-run]
+    :as opts}]
+  (let [args ["java" "-jar" (str transcribble-jar)
+              "--zencastr-to-otr" infile outfile
+              (or config-filename "")
+              (if speakers
+                (str/join "," speakers)
+                "")]]
     (println (str/join " " args))
     (when-not dry-run
       (shell args))))
