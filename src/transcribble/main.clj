@@ -20,7 +20,7 @@
           config (when (not-empty config-filename)
                    (core/load-config config-filename))]
       (when-not (and infile outfile)
-        (binding [*out* System/err]
+        (binding [*out* *err*]
           (println "Usage: transcribble --fixup-otr INFILE OUTFILE")
           (System/exit 1)))
       (otr/fixup-otr! config infile outfile))
@@ -36,7 +36,7 @@
                           (mapv #(str/split % #"="))
                           (into {})))]
       (when-not (and infile outfile)
-        (binding [*out* System/err]
+        (binding [*out* *err*]
           (println "Usage: transcribble --zencastr-to-otr INFILE OUTFILE")
           (System/exit 1)))
       (otr/zencaster->otr! infile outfile config speakers))
