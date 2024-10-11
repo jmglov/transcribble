@@ -478,11 +478,29 @@
      {:desc "Path to Transcribble JAR file to use for conversion"
       :ref "<path>"
       :require true}
+
+     :old-start
+     {:desc "Old starting timestamp"
+      :ref "HH:mm:ss[.sss]|ss[.sss]"}
+
+     :new-start
+     {:desc "New starting timestamp"
+      :ref "HH:mm:ss[.sss]|ss[.sss]"}
      }}}
-  [{:keys [infile outfile config-filename transcribble-jar dry-run]
+  [{:keys [infile outfile config-filename transcribble-jar dry-run
+           old-start new-start]
     :as opts}]
-  (let [args ["java" "-jar" (str transcribble-jar)
-              "--fixup-otr" infile outfile (or config-filename "")]]
+  (when (or old-start new-start)
+    (when-not (and old-start new-start)
+      (let [msg "--old-start and --new-start required together"]
+        (throw (ex-info msg
+                        {:type :org.babashka/cli, :msg msg
+                         :old-start old-start, :new-start new-start})))))
+  (let [args (concat ["java" "-jar" (str transcribble-jar)
+                      "--fixup-otr"]
+                     (when old-start
+                       ["--old-start" old-start "--new-start" new-start])
+                     [infile outfile (or config-filename "")])]
     (println (str/join " " args))
     (when-not dry-run
       (shell args))))

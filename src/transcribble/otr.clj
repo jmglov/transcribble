@@ -8,12 +8,28 @@
             [transcribble.util :refer [->map concatv] :as util]))
 
 (defn ts->sec [ts]
-  (let [[[_ hh mm ss frac]] (re-seq #"^(?:(\d{2}):)?(\d{2}):(\d{2})[.](\d+)$" ts)]
-    (format "%.6f"
-            (+ (-> hh util/parse-int (* 3600))
-               (-> mm util/parse-int (* 60))
-               (-> ss util/parse-int)
-               (-> frac util/parse-fractional)))))
+  (if (str/includes? ts ":")
+    (let [ts (if (re-matches #"^.+[.]\d+$" ts) ts (format "%s.0" ts))
+          [[_ hh mm ss frac]] (re-seq #"^(?:(\d{2}):)?(\d{2}):(\d{2})[.](\d+)$" ts)]
+      (format "%.6f"
+              (+ (-> hh util/parse-int (* 3600))
+                 (-> mm util/parse-int (* 60))
+                 (-> ss util/parse-int)
+                 (-> frac util/parse-fractional))))
+    ts))
+
+(defn sec->ts [sec]
+  (let [sec (if (re-matches #"^.+[.]\d+$" (str sec))
+              (str sec)
+              (format "%s.0" (str sec)))
+        [[_ secs sss]] (re-seq #"^(\d+)[.]\d+$" sec)
+        secs-int (util/parse-int secs)
+        HH (-> secs-int (/ 3600) int)
+        mm (-> secs-int (/ 60) int (mod 60))
+        ss (-> secs-int (mod 60))]
+    (if (zero? HH)
+      (format "%02d:%02d" mm ss)
+      (format "%02d:%02d:%02d" HH mm ss))))
 
 (defn explode-hiccup [[tag attrs content & rest]]
     (let [content (if rest (cons content rest) content)]
@@ -103,6 +119,32 @@
         (assoc otr :text)
         json/generate-string)))
 
+(defn rebase-time
+  ([hiccup]
+   ;; We don't have config, so just return as it
+   hiccup)
+  ([{:keys [old-start new-start] :as config} hiccup]
+   (if (and old-start new-start)
+     (let [old-sec (-> old-start ts->sec Float/parseFloat)
+           new-sec (-> new-start ts->sec Float/parseFloat)]
+       (->> hiccup
+            (remove (fn [[_p _attrs
+                          [_span {:keys [:data-timestamp]} _ts]
+                          _speaker _text]]
+                      (< (Float/parseFloat data-timestamp) old-sec)))
+            (map (fn [[p attrs
+                       [_span {:keys [:data-timestamp]} ts]
+                       speaker text]]
+                   (let [new-sec (-> (Float/parseFloat data-timestamp)
+                                     (- old-sec)
+                                     (+ new-sec))]
+                     [p attrs
+                      [:span {:class "timestamp", :data-timestamp (str new-sec)}
+                       (sec->ts new-sec)]
+                      speaker text])))))
+     ;; We don't have an old and new start timestamp, so just return as it
+     hiccup)))
+
 (defn fixup-otr!
   ([infile outfile]
    (fixup-otr! {} infile outfile))
@@ -113,6 +155,7 @@
           hickory/parse-fragment
           (map hickory/as-hiccup)
           (fixup-hiccup config)
+          (rebase-time config)
           (hiccup->otr config otr)
           (spit outfile)))))
 

@@ -16,9 +16,22 @@
       (pdf/write-pdf! config title paragraphs pdf-filename))
 
     (= "--fixup-otr" (first args))
-    (let [[_ infile outfile config-filename] args
-          config (when (not-empty config-filename)
-                   (core/load-config config-filename))]
+    (let [[_ & opts-and-args] args
+          opts (->> opts-and-args
+                    (partition-all 2)
+                    (take-while (fn [[opt _v]] (str/starts-with? opt "--"))))
+          args (->> opts-and-args
+                    (partition-all 2)
+                    (drop-while (fn [[opt _v]] (str/starts-with? opt "--")))
+                    flatten)
+          [infile outfile config-filename] args
+          opts-map (->> opts
+                        (map (fn [[k v]]
+                               [(-> k (str/replace "--" "") keyword) v]))
+                        (into {}))
+          config (merge opts-map
+                        (when (not-empty config-filename)
+                          (core/load-config config-filename)))]
       (when-not (and infile outfile)
         (binding [*out* *err*]
           (println "Usage: transcribble --fixup-otr INFILE OUTFILE")
