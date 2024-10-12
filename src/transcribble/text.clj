@@ -28,11 +28,21 @@
                              %)))
           text (:remove-fillers config)))
 
+(defn mk-replacement-str [replacement]
+  (str replacement "$"
+       (-> (re-seq #"[$]\d+" replacement)
+           last
+           (or "$0")
+           (str/replace "$" "")
+           Integer/parseInt
+           inc)))
+
 (defn replace-words [config text]
   (->> (:replace config)
        (map (fn [[k v]] [(name k) v]))
        (reduce (fn [text' [match replacement]]
-                 (process-text text'
-                               #(str/replace % (re-pattern (str "^" match "([\\W]?)"))
-                                             (str replacement "$1"))))
+                 (process-text
+                  text'
+                  #(str/replace % (re-pattern (str "^" match "([\\W]?)"))
+                                (mk-replacement-str replacement))))
                text)))
