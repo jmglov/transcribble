@@ -9,4 +9,5 @@
            {:extra-deps
             {luchiniatwork/cambada {:mvn/version "1.0.0"}}
             :main-opts ["-m" "cambada.uberjar"
+                        "--app-version" "2024-10-12.0"
                         "-m" "transcribble.main"]}}}
