@@ -39,6 +39,11 @@ The config file is a JSON file containing the following options:
 {
   "abbreviate-after": INT,
   "abbreviator": ABBREVIATOR,
+  "capitalise": [
+    CAPITALISE_WORD_1,
+    CAPITALISE_WORD_2,
+    ...
+  ],
   "downcase": [
     DOWNCASE_WORD1,
     DOWNCASE_WORD2,
