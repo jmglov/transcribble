@@ -129,6 +129,14 @@
    :LanguageCode "en-US"
    :Media {:MediaFileUri "s3://misc.jmglov.net/Techs_Looming_Threats/Pariss_Chandler/Pariss_Chandler.mp3"}})
 
+(defn validate-rebase-time! [{:keys [old-start new-start] :as _opts}]
+  (when (or old-start new-start)
+    (when-not (and old-start new-start)
+      (let [msg "--old-start and --new-start required together"]
+        (throw (ex-info msg
+                        {:type :org.babashka/cli, :msg msg
+                         :old-start old-start, :new-start new-start}))))))
+
 (defn upload-to-s3! [{:keys [s3 s3-bucket replace-existing
                              dry-run] :as opts} filename]
   (let [s3 (or s3 (mk-s3-client opts))
@@ -490,12 +498,7 @@
   [{:keys [infile outfile config-filename transcribble-jar dry-run
            old-start new-start]
     :as opts}]
-  (when (or old-start new-start)
-    (when-not (and old-start new-start)
-      (let [msg "--old-start and --new-start required together"]
-        (throw (ex-info msg
-                        {:type :org.babashka/cli, :msg msg
-                         :old-start old-start, :new-start new-start})))))
+  (validate-rebase-time! opts)
   (let [args (concat ["java" "-jar" (str transcribble-jar)
                       "--fixup-otr"]
                      (when old-start
@@ -531,15 +534,29 @@
      {:desc "Path to Transcribble JAR file to use for conversion"
       :ref "<path>"
       :require true}
+
+     :old-start
+     {:desc "Old starting timestamp"
+      :ref "HH:mm:ss[.sss]|ss[.sss]"}
+
+     :new-start
+     {:desc "New starting timestamp"
+      :ref "HH:mm:ss[.sss]|ss[.sss]"}
      }}}
-  [{:keys [infile outfile config-filename speakers transcribble-jar dry-run]
+  [{:keys [infile outfile config-filename speakers
+           old-start new-start
+           transcribble-jar dry-run]
     :as opts}]
-  (let [args ["java" "-jar" (str transcribble-jar)
-              "--zencastr-to-otr" infile outfile
-              (or config-filename "")
-              (if speakers
-                (str/join "," speakers)
-                "")]]
+  (validate-rebase-time! opts)
+  (let [args (concat ["java" "-jar" (str transcribble-jar)
+                      "--zencastr-to-otr"]
+                     (when old-start
+                       ["--old-start" old-start "--new-start" new-start])
+                     [infile outfile
+                      (or config-filename "")
+                      (if speakers
+                        (str/join "," speakers)
+                        "")])]
     (println (str/join " " args))
     (when-not dry-run
       (shell args))))

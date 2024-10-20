@@ -177,7 +177,8 @@
                   (str/replace ts #"[.]\d+$" "")]
                  [:b {} (get speakers speaker speaker)]
                  (str ": " paragraph)]))
-        (fixup-hiccup config))))
+        (fixup-hiccup config)
+        (rebase-time config))))
 
 (defn zencaster->otr! [infile outfile config speakers]
   (->> (load-zencastr infile)

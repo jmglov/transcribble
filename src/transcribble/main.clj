@@ -7,6 +7,25 @@
             [transcribble.speakers :as speakers])
   (:gen-class))
 
+(defn parse-args [[_ & opts-and-args]]
+  (let [opts (->> opts-and-args
+                  (partition-all 2)
+                  (take-while (fn [[opt _v]] (str/starts-with? opt "--"))))
+        args (->> opts-and-args
+                  (partition-all 2)
+                  (drop-while (fn [[opt _v]] (str/starts-with? opt "--")))
+                  flatten)
+        opts-map (->> opts
+                      (map (fn [[k v]]
+                             [(-> k (str/replace "--" "") keyword) v]))
+                      (into {}))]
+    {:args args, :opts opts-map}))
+
+(defn load-config [opts config-filename]
+  (merge opts
+         (when (not-empty config-filename)
+           (core/load-config config-filename))))
+
 (defn -main [& args]
   (cond
     (= "--convert-otr" (first args))
@@ -16,22 +35,9 @@
       (pdf/write-pdf! config title paragraphs pdf-filename))
 
     (= "--fixup-otr" (first args))
-    (let [[_ & opts-and-args] args
-          opts (->> opts-and-args
-                    (partition-all 2)
-                    (take-while (fn [[opt _v]] (str/starts-with? opt "--"))))
-          args (->> opts-and-args
-                    (partition-all 2)
-                    (drop-while (fn [[opt _v]] (str/starts-with? opt "--")))
-                    flatten)
+    (let [{:keys [opts args]} (parse-args args)
           [infile outfile config-filename] args
-          opts-map (->> opts
-                        (map (fn [[k v]]
-                               [(-> k (str/replace "--" "") keyword) v]))
-                        (into {}))
-          config (merge opts-map
-                        (when (not-empty config-filename)
-                          (core/load-config config-filename)))]
+          config (load-config opts config-filename)]
       (when-not (and infile outfile)
         (binding [*out* *err*]
           (println "Usage: transcribble --fixup-otr INFILE OUTFILE")
@@ -39,10 +45,9 @@
       (otr/fixup-otr! config infile outfile))
 
     (= "--zencastr-to-otr" (first args))
-    (let [[_ infile outfile config-filename speakers] args
-          config (if (empty? config-filename)
-                   {}
-                   (core/load-config config-filename))
+    (let [{:keys [opts args]} (parse-args args)
+          [infile outfile config-filename speakers] args
+          config (load-config opts config-filename)
           speakers (if (empty? speakers)
                      {}
                      (->> (str/split speakers #",")
