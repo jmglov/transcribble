@@ -57,6 +57,11 @@ The config file is a JSON file containing the following options:
       ...
     }
   },
+  "remove-active-listening": [
+    WORD1,
+    WORD2,
+    ...
+  ],
   "remove-fillers": [
     FILLER_WORD1,
     FILLER_WORD2,
@@ -96,6 +101,33 @@ Valid values for `FORMATTER` are:
 options are:
 - `"style"`: map of [PDF document
   elements](https://github.com/clj-pdf/clj-pdf#document-elements) to styles
+
+If `remove-active-listening` is specified, the value is a list of words which
+indicate active listening; e.g. "mm", "right", "yeah", etc. Paragraphs
+consisting solely of active listening words will be removed from the resulting
+transcript. For example, given the following config:
+
+``` json
+"remove-active-listening": ["mm", "right", "yeah"]
+```
+
+And a transcript consisting of the following paragraphs:
+
+``` text
+[12:34] Speaker 1: It's vital that we not cede the terrain of struggle.
+[12:38] Speaker 2: Right, yeah.
+[12:39] Speaker 1: Do you know what I mean? We really have to move on
+[12:42] Speaker 2: Mm. Mm. Yeah.
+[12:43] Speaker 1: from this way of moving through the world.
+```
+
+The resulting transcript will look like this:
+
+``` text
+[12:34] Speaker 1: It's vital that we not cede the terrain of struggle.
+[12:39] Speaker 1: Do you know what I mean? We really have to move on
+[12:43] Speaker 1: from this way of moving through the world.
+```
 
 If `remove-fillers` is specified, the value is a list of filler words which will
 be removed from the transcript. Some common filler words in English are "um" and

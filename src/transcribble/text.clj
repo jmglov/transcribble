@@ -46,3 +46,10 @@
                   #(str/replace % (re-pattern (str "^" match "([\\W]?)"))
                                 (mk-replacement-str replacement))))
                text)))
+
+(defn active-listening? [config text]
+  (let [active-listening-word? (set (:remove-active-listening config))
+        words (->> (str/split text #"\W+")
+                   (map str/lower-case)
+                   (remove empty?))]
+    (every? active-listening-word? words)))

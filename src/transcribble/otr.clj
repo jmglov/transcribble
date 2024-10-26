@@ -78,6 +78,16 @@
                              "\n"}
                            %))))
 
+(defn paragraph->text [hiccup]
+  (->> hiccup
+       (filter string?)
+       first))
+
+(defn remove-active-listening [config hiccup]
+  (->> hiccup
+       (remove (comp (partial text/active-listening? config)
+                     paragraph->text))))
+
 (defn fixup-html-quotes [hiccup]
   (walk/postwalk (fn [node]
                    (if (and (string? node) (str/includes? node "&"))
@@ -102,6 +112,7 @@
   (->> hiccup
        fixup-html-quotes
        remove-empty-paragraphs
+       (remove-active-listening config)
        (map (partial fixup-paragraph config))))
 
 (defn hiccup->otr
@@ -145,15 +156,19 @@
      ;; We don't have an old and new start timestamp, so just return as it
      hiccup)))
 
+(defn otr->hiccup [otr]
+  (->> otr
+       :text
+       hickory/parse-fragment
+       (map hickory/as-hiccup)))
+
 (defn fixup-otr!
   ([infile outfile]
    (fixup-otr! {} infile outfile))
   ([config infile outfile]
    (let [otr (-> infile slurp (json/parse-string keyword))]
      (->> otr
-          :text
-          hickory/parse-fragment
-          (map hickory/as-hiccup)
+          otr->hiccup
           (fixup-hiccup config)
           (rebase-time config)
           (hiccup->otr config otr)
