@@ -133,6 +133,26 @@ If `remove-fillers` is specified, the value is a list of filler words which will
 be removed from the transcript. Some common filler words in English are "um" and
 "uh". If `remove-fillers` is not specified, no filler word removal will be done.
 
+If `remove-repeated-words` is specified, the value is a list of commonly
+repeated words that will be stripped of repetition. For example, given the
+following config:
+
+``` json
+"remove-repeated-words": ["and", "it's", "the"]
+```
+
+And a transcript containing a passage like this:
+
+``` text
+So it's it's it's important to remember the the... the themes and and words
+```
+
+The resulting passage will look like this:
+
+``` text
+So it's important to remember the themes and words
+```
+
 If `replace` is specified, the value is a map of regular expressions to their
 replacements; e.g. `"([Ff])olks": "$1olx"` would replace all occurrences of
 "Folks" or "folks" with "Folx" or "folx". If `replace` is not specified, no

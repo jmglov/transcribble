@@ -10,7 +10,9 @@
                       (when config-filename (load-json-file config-filename)))]
     (-> config
         (update :formatter keyword)
-        (update :remove-fillers set))))
+        (update :remove-active-listening set)
+        (update :remove-fillers set)
+        (update :remove-repeated-words set))))
 
 (defn ->float [time-str]
   (try (Float. time-str)

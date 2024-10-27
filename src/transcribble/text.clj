@@ -47,9 +47,26 @@
                                 (mk-replacement-str replacement))))
                text)))
 
-(defn active-listening? [config text]
-  (let [active-listening-word? (set (:remove-active-listening config))
-        words (->> (str/split text #"\W+")
+(defn active-listening? [{:keys [remove-active-listening] :as config} text]
+  (let [words (->> (str/split text #"\W+")
                    (map str/lower-case)
                    (remove empty?))]
-    (every? active-listening-word? words)))
+    (every? remove-active-listening words)))
+
+(defn repetition-word [{:keys [remove-repeated-words] :as config} word]
+  (when word
+    (let [word (str/lower-case (str/replace word #"\W+$" ""))]
+      (when (contains? remove-repeated-words word)
+        word))))
+
+(defn remove-repetitions [config text]
+  (->> (str/split text #"\s+")
+       (reduce (fn [words word]
+                 (let [[last-word & prev-words] (reverse words)
+                       r-word (repetition-word config word)
+                       r-last-word (repetition-word config last-word)]
+                   (if (and r-word (= r-word r-last-word))
+                     (conj (vec (reverse prev-words)) last-word)
+                     (conj words word))))
+               [])
+       (str/join " ")))

@@ -95,18 +95,56 @@
                      node))
                  hiccup))
 
-(defn fixup-paragraph [config [p-tag p-attrs & p-contents :as p]]
-  (let [p-contents (remove-empty-paragraphs p-contents)]
-    (if (= :b (ffirst p-contents))
-      (let [[[b-tag b-attrs & b-contents] & p-contents] p-contents]
-        (if (= :span (ffirst b-contents))
-          (let [[span-tag speaker] b-contents]
-            (concatv [p-tag p-attrs
-                      span-tag
-                      [:b b-attrs (str/replace speaker #"^\s+" "")]]
-                     p-contents))
-          p))
-      p)))
+(defn fixup-text [config text]
+  (text/remove-repetitions config text))
+
+(defn find-text [contents]
+  (if (string? contents)
+    contents
+    (some #(and (string? %) %) contents)))
+
+(defn fixup-paragraph [config [p-tag p-attrs &
+                               [first-content & rest-contents :as p-contents]
+                               :as p]]
+  (when-not (or (nil? p-contents)
+                (and (not (string? first-content))
+                     (nil? rest-contents)))
+    (concatv
+     [p-tag p-attrs]
+     (cond
+       ;; [:p {...} "Some content here"]
+       (string? first-content)
+       (fixup-text config first-content)
+
+       ;; [:p {...} [:span {...} ?] ?]
+       (= :span (first first-content))
+       (let [[span-tag span-attrs span-ts] first-content]
+         [[span-tag span-attrs
+           (if (string? span-ts)
+             ;; [:p {...} [:span {...} "12:34:56"] ?]
+             span-ts
+             ;; [:p {...} [:span {...} [:b {...} "12:34:56"]] ?]
+             (nth span-ts 2))]
+          (fixup-text config (find-text rest-contents))])
+
+       ;; [:p {...} [:b {...} ?] ?]
+       (= :b (first first-content))
+       (let [[b-tag b-attrs & b-contents] first-content]
+         (if (= :span (ffirst b-contents))
+           ;; [:p {...} [:b {...} [:span {...} ?]] ?]
+           (let [[span-tag speaker] b-contents]
+             [span-tag
+              [b-tag b-attrs (str/replace speaker #"^\s+" "")]
+              (fixup-text config (find-text rest-contents))])
+           ;; [:p {...} [:b {...} ?] ?]
+           (let [[speaker & _] b-contents]
+             [[b-tag b-attrs (str/replace speaker #"^\s+" "")]
+              (fixup-text config (find-text rest-contents))])))
+
+       ;; OMG I don't know what is going on here!
+       :else
+       (throw (ex-info "Inscrutable <p> tag"
+                       {:p p}))))))
 
 (defn fixup-hiccup [config hiccup]
   (->> hiccup
